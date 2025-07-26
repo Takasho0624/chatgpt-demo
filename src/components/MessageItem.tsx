@@ -70,7 +70,12 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
 
   return (
     <div class="py-2 -mx-4 px-4 transition-colors md:hover:bg-slate/3">
-      <div class="flex gap-3 items-start rounded-lg" class:op-75={role === 'user'}>
+<div
+  class={`flex gap-3 items-start rounded-lg ${
+    role === 'user' ? 'justify-end' : 'justify-start'
+  }`}
+>
+
 {role === 'assistant' ? (
   <img
     src="/kei-icon.png"
