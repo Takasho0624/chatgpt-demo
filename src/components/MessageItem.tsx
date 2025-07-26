@@ -72,9 +72,10 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
     <div class="py-2 -mx-4 px-4 transition-colors md:hover:bg-slate/3">
 <div
   class={`flex gap-3 items-start rounded-lg ${
-    role === 'user' ? 'justify-end' : 'justify-start'
+    role === 'user' ? 'justify-end flex-row-reverse' : 'justify-start'
   }`}
 >
+
 
 {role === 'assistant' ? (
   <img
