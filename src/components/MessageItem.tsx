@@ -99,6 +99,7 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
 />
 
 
+
       </div>
       {showRetry?.() && onRetry && (
         <div class="fie px-3 mb-2">
