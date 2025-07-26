@@ -70,3 +70,11 @@ const { title } = Astro.props;
     background-color: var(--c-bg);
   }
 </style>
+<style is:global>
+@import "../message.css";
+
+body {
+  background-image: url('/lounge-bg.png');
+  ...
+}
+</style>
