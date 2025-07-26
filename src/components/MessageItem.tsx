@@ -80,7 +80,15 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
 ) : (
   <div class={`shrink-0 w-7 h-7 mt-4 rounded-full op-80 ${roleClass[role]}`} />
 )}
-        <div class="message prose break-words overflow-hidden" innerHTML={htmlString()} />
+<div
+  class={`message prose break-words overflow-hidden rounded-xl px-4 py-2 max-w-[70%] ${
+    role === 'user'
+      ? 'bg-green-200 ml-auto rounded-br-none'
+      : 'bg-white mr-auto rounded-bl-none'
+  }`}
+  innerHTML={htmlString()}
+/>
+
       </div>
       {showRetry?.() && onRetry && (
         <div class="fie px-3 mb-2">
