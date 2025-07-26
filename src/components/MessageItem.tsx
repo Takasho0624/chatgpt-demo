@@ -84,7 +84,7 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
   src="/kei-icon.png"
   alt="けいのアイコン"
   class="w-8 h-8 mt-4 rounded-full border"
-  style="border-color: #d2b48c;" // ←タンサンド（tan）カラー
+ style={{ borderColor: '#d2b48c' }} 
 
 />
 ) : (
@@ -92,7 +92,7 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
   src="/user-icon.png"
   alt="ユーザーアイコン"
   class="w-8 h-8 mt-4 rounded-full border border-gray-300"
-  style="border-color: #d2b48c;" <!--←タンサンド（tan）色 -->
+  style="border-color: #d2b48c;" 
 />
 )}
 
