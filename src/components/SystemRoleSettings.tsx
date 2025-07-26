@@ -3,6 +3,7 @@ import IconEnv from './icons/Env'
 import IconX from './icons/X'
 import SettingsSlider from './SettingsSlider'
 import type { Accessor, Setter } from 'solid-js'
+import '../message.css'
 
 interface Props {
   canEdit: Accessor<boolean>
