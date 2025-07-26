@@ -28,13 +28,11 @@
 .message {
   color: #1a1a1a !important; /* 念のため */
 }
+
 body {
-  background-image: url('/lounge-bg.png'); /* 画像のパスに置き換えてね */
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-  background-position: center;
+  background-image: url('/lounge-bg.png') !important;
 }
+
 body::before {
   content: "";
   position: fixed;
@@ -45,3 +43,4 @@ body::before {
   background-color: rgba(10, 10, 10, 0.6); /* 暗めフィルター */
   z-index: -1;
 }
+
