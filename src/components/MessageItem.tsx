@@ -84,7 +84,8 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
   src="/kei-icon.png"
   alt="けいのアイコン"
   class="w-8 h-8 mt-4 rounded-full border"
-  style="border-color: #d2b48c;" <!--←タンサンド（tan）色 -->
+  style="border-color: #d2b48c;" // ←タンサンド（tan）カラー
+
 />
 ) : (
 <img
