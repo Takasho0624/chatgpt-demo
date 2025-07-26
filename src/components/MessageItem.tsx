@@ -83,8 +83,11 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
     class="w-8 h-8 mt-4 rounded-full border border-gray-300"
   />
 ) : (
-  <div class={`shrink-0 w-7 h-7 mt-4 rounded-full op-80 ${roleClass[role]}`} />
+  <div
+    class={`shrink-0 w-8 h-8 mt-4 rounded-full border border-gray-300 bg-green-400`}
+  />
 )}
+
 <div
   class={`message prose break-words overflow-hidden rounded-xl px-4 py-2 max-w-[70%] ${
     role === 'user'
