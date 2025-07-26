@@ -28,3 +28,20 @@
 .message {
   color: #1a1a1a !important; /* 念のため */
 }
+body {
+  background-image: url('/lounge-bg.png'); /* 画像のパスに置き換えてね */
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-position: center;
+}
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(10, 10, 10, 0.6); /* 暗めフィルター */
+  z-index: -1;
+}
