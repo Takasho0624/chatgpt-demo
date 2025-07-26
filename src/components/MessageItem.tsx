@@ -6,6 +6,8 @@ import { useClipboard, useEventListener } from 'solidjs-use'
 import IconRefresh from './icons/Refresh'
 import type { Accessor } from 'solid-js'
 import type { ChatMessage } from '@/types'
+import './message.css'
+
 
 interface Props {
   role: ChatMessage['role']
