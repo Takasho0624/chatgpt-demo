@@ -14,6 +14,12 @@ const passList = sitePassword.split(',') || []
 export const post: APIRoute = async(context) => {
   const body = await context.request.json()
   const { sign, time, messages, pass, temperature } = body
+  // 「けい」風の system プロンプトを先頭に追加
+messages.unshift({
+  role: "system",
+  content: "あなたは『けい』という名前のAIです。少しゆっくりした、やさしい口調で話します。お客様の悩みや創作の相談に寄り添いながら、プロとしてのアドバイスも忘れません。"
+});
+
   if (!messages) {
     return new Response(JSON.stringify({
       error: {
