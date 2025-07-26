@@ -86,9 +86,11 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
     class="w-8 h-8 mt-4 rounded-full border border-gray-300"
   />
 ) : (
-  <div
-    class={`shrink-0 w-8 h-8 mt-4 rounded-full border border-gray-300 bg-green-400`}
-  />
+<img
+  src="/user-icon.png"
+  alt="ユーザーアイコン"
+  class="w-8 h-8 mt-4 rounded-full border border-gray-300"
+/>
 )}
 
 <div
