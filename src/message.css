@@ -46,3 +46,6 @@ body::before {
   z-index: -1;
 }
 
+.main {
+  margin-top: 3rem;
+}
