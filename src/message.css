@@ -45,3 +45,7 @@ body::before {
   background-color: rgba(10, 10, 10, 0.6); /* 暗めフィルター */
   z-index: -1;
 }
+.message p {
+  margin-bottom: 0;
+  margin-top: 0;
+}
