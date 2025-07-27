@@ -97,12 +97,11 @@ export default ({ role, message, showRetry, onRetry }: Props) => {
 )}
 
 <div
-class={`message prose break-words overflow-hidden rounded-xl px-4 py-2 max-w-[70%] ${
-  role === 'user'
-    ? 'bg-green-200 ml-auto rounded-br-none text-black'
-    : 'bg-white mr-auto rounded-bl-none text-black dark:text-white'
-}`}
-
+  class={`message break-words overflow-hidden rounded-xl px-4 py-2 max-w-[70%] text-base leading-tight whitespace-pre-wrap ${
+    role === 'user'
+      ? 'bg-green-200 ml-auto rounded-br-none text-black'
+      : 'bg-white mr-auto rounded-bl-none text-black dark:text-white'
+  }`}
   innerHTML={htmlString()}
 />
       </div>
