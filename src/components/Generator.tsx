@@ -252,20 +252,13 @@ export default () => {
               inputRef.style.height = `${inputRef.scrollHeight}px`
             }}
             rows="1"
-          class="gen-textarea w-full"
+          class="gen-textarea w-full min-h-20"
           />
-          <button onClick={handleButtonClick} disabled={systemRoleEditing()} gen-slate-btn>
-            Send
-          </button>
-<button
-  title="新しい夜を始める"
-  onClick={clear}
-  disabled={systemRoleEditing()}
-  gen-slate-btn
-  class="whitespace-nowrap px-3"
->
-  <IconClear />
-  <span>新しい夜を始める</span>
+<button onClick={handleButtonClick} disabled={systemRoleEditing()} gen-slate-btn class="flex-shrink-0">
+  送信
+</button>
+<button title="新しい夜に戻る" onClick={clear} disabled={systemRoleEditing()} gen-slate-btn class="flex-shrink-0">
+  新しい夜に戻る
 </button>
         </div>
       </Show>
