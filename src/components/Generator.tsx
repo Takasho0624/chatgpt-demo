@@ -257,9 +257,10 @@ export default () => {
           <button onClick={handleButtonClick} disabled={systemRoleEditing()} gen-slate-btn>
             Send
           </button>
-          <button title="Clear" onClick={clear} disabled={systemRoleEditing()} gen-slate-btn>
-            <IconClear />
-          </button>
+<button title="新しい夜を始める" onClick={clear} disabled={systemRoleEditing()} gen-slate-btn>
+  <IconClear />
+  新しい夜を始める
+</button>
         </div>
       </Show>
       <div class="fixed bottom-5 left-5 rounded-md hover:bg-slate/10 w-fit h-fit transition-colors active:scale-90" class:stick-btn-on={isStick()}>
