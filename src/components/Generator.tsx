@@ -257,9 +257,15 @@ export default () => {
           <button onClick={handleButtonClick} disabled={systemRoleEditing()} gen-slate-btn>
             Send
           </button>
-<button title="新しい夜を始める" onClick={clear} disabled={systemRoleEditing()} gen-slate-btn>
+<button
+  title="新しい夜を始める"
+  onClick={clear}
+  disabled={systemRoleEditing()}
+  gen-slate-btn
+  class="whitespace-nowrap px-3"
+>
   <IconClear />
-  新しい夜を始める
+  <span>新しい夜を始める</span>
 </button>
         </div>
       </Show>
