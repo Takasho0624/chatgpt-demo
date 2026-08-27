@@ -239,7 +239,7 @@ export default () => {
           </div>
         )}
       >
-<div class="gen-text-wrapper flex-wrap" class:op-50={systemRoleEditing()}>
+<div class="gen-text-wrapper flex-col sm:flex-row" class:op-50={systemRoleEditing()}>
           <textarea
             ref={inputRef!}
             disabled={systemRoleEditing()}
@@ -252,7 +252,7 @@ export default () => {
               inputRef.style.height = `${inputRef.scrollHeight}px`
             }}
             rows="1"
-            class="gen-textarea flex-1 min-w-0"
+          class="gen-textarea w-full"
           />
           <button onClick={handleButtonClick} disabled={systemRoleEditing()} gen-slate-btn>
             Send
