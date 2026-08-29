@@ -5,25 +5,82 @@ import Layout from '../layouts/Layout.astro'
 <Layout title="けいのBAR - Voice">
   <main class="voice-page">
 
+    <!-- =========================
+         上部ナビ
+         ========================= -->
+
+    <div class="voice-topbar">
+
+      <a
+        href="/"
+        class="back-link"
+      >
+        ← テキスト版へ戻る
+      </a>
+
+      <div class="account-area">
+
+        <span
+          id="login-name"
+          class="login-name"
+        >
+          ログイン情報を確認中…
+        </span>
+
+        <button
+          id="logout-button"
+          type="button"
+          class="logout-button"
+        >
+          ログアウト
+        </button>
+
+      </div>
+
+    </div>
+
+
+    <!-- =========================
+         メインカード
+         ========================= -->
+
     <section class="bar-card">
 
-      <div class="title">
-        けいのBAR
+      <!-- 名前＋状態 -->
+
+      <div class="voice-meta">
+
+        <span
+          id="customer-name"
+          class="customer-name"
+        >
+          お客様
+        </span>
+
+        <span
+          id="status"
+          class="status"
+        >
+          少し待ってね🍸
+        </span>
+
       </div>
 
-      <div id="customer-name" class="customer-name">
-        お客様情報を確認しています…
-      </div>
 
-      <div id="status" class="status">
-        少し待ってね🍸
-      </div>
+      <!-- =========================
+           BARシーン
+           ========================= -->
 
       <div class="kei-area">
 
+        <!-- バックバー -->
         <div class="kei-area__bg"></div>
+
+        <!-- 背景の明暗調整 -->
         <div class="kei-area__overlay"></div>
 
+
+        <!-- けい -->
         <div class="kei-area__inner">
 
           <img
@@ -33,13 +90,31 @@ import Layout from '../layouts/Layout.astro'
             class="kei-avatar"
           />
 
-          <div id="kei-state" class="kei-state">
-            準備中
-          </div>
+        </div>
 
+
+        <!-- 前景カウンター -->
+        <img
+          src="/kei-counter-front.png"
+          alt=""
+          class="kei-counter-front"
+        />
+
+
+        <!-- 初回待機中だけ表示 -->
+        <div
+          id="kei-state"
+          class="kei-state"
+        >
+          待ってるよ
         </div>
 
       </div>
+
+
+      <!-- =========================
+           ボタン
+           ========================= -->
 
       <button
         id="voice-button"
@@ -50,6 +125,7 @@ import Layout from '../layouts/Layout.astro'
         🎙️ けいと話す
       </button>
 
+
       <button
         id="stop-button"
         class="stop-button"
@@ -58,6 +134,7 @@ import Layout from '../layouts/Layout.astro'
       >
         会話を終了
       </button>
+
 
       <audio
         id="remote-audio"
@@ -73,16 +150,33 @@ import Layout from '../layouts/Layout.astro'
 <script>
   import { supabase } from '../utils/supabase'
 
+
+  /*
+   * =========================
+   * 基本
+   * =========================
+   */
+
   let peerConnection = null
   let localStream = null
   let dataChannel = null
 
   let displayName = 'お客様'
+  let loginDisplayName = ''
   let memory = ''
 
   /*
-   * リップシンク
+   * 一度でも会話開始したか
    */
+  let conversationStarted = false
+
+
+  /*
+   * =========================
+   * リップシンク
+   * =========================
+   */
+
   let audioContext = null
   let analyser = null
   let remoteAudioSource = null
@@ -92,20 +186,35 @@ import Layout from '../layouts/Layout.astro'
   let lastMouthChange = 0
   let silenceFrames = 0
 
+
   /*
+   * =========================
    * まばたき
+   * =========================
    */
+
   let blinkTimer = null
   let blinkReturnTimer = null
+
   let isKeiSpeaking = false
   let isBlinking = false
 
+
   /*
+   * =========================
    * Web検索
+   * =========================
    */
+
   const handledToolCalls =
     new Set()
 
+
+  /*
+   * =========================
+   * キャラ画像
+   * =========================
+   */
 
   const CLOSED_SRC =
     '/kei-mouth-close.png'
@@ -120,41 +229,71 @@ import Layout from '../layouts/Layout.astro'
     '/kei-eyes-close.png'
 
 
+  /*
+   * =========================
+   * DOM
+   * =========================
+   */
+
   const voiceButton =
     document.getElementById(
       'voice-button'
     )
+
 
   const stopButton =
     document.getElementById(
       'stop-button'
     )
 
+
+  const logoutButton =
+    document.getElementById(
+      'logout-button'
+    )
+
+
   const status =
     document.getElementById(
       'status'
     )
+
 
   const keiState =
     document.getElementById(
       'kei-state'
     )
 
+
   const customerName =
     document.getElementById(
       'customer-name'
     )
+
+
+  const loginName =
+    document.getElementById(
+      'login-name'
+    )
+
 
   const remoteAudio =
     document.getElementById(
       'remote-audio'
     )
 
+
   const keiAvatar =
     document.getElementById(
       'kei-avatar'
     )
 
+
+  /*
+   * =========================
+   * 画像先読み
+   * =========================
+   */
 
   function preloadAvatarImages() {
 
@@ -163,16 +302,41 @@ import Layout from '../layouts/Layout.astro'
       SMALL_OPEN_SRC,
       OPEN_SRC,
       BLINK_SRC,
-    ].forEach((src) => {
+    ].forEach(
+      (src) => {
 
-      const image =
-        new Image()
+        const image =
+          new Image()
 
-      image.src =
-        src
-    })
+        image.src =
+          src
+      }
+    )
   }
 
+
+  /*
+   * =========================
+   * 画像内ステータス
+   * =========================
+   */
+
+  function setKeiState(text = '') {
+
+    if (!keiState) {
+      return
+    }
+
+    keiState.textContent =
+      text
+  }
+
+
+  /*
+   * =========================
+   * 口
+   * =========================
+   */
 
   function setMouth(type) {
 
@@ -180,15 +344,18 @@ import Layout from '../layouts/Layout.astro'
       return
     }
 
+
     if (isBlinking) {
       return
     }
+
 
     if (
       currentMouth === type
     ) {
       return
     }
+
 
     currentMouth =
       type
@@ -223,8 +390,11 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
+   * =========================
    * まばたき
+   * =========================
    */
+
   function scheduleBlink() {
 
     if (
@@ -237,6 +407,9 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
+    /*
+     * 約4.5〜8.5秒
+     */
     const delay =
       4500 +
       Math.random() *
@@ -355,8 +528,11 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * リップシンク
+   * =========================
+   * リップシンク停止
+   * =========================
    */
+
   function stopRealLipSync() {
 
     if (
@@ -386,6 +562,7 @@ import Layout from '../layouts/Layout.astro'
         // ignore
       }
 
+
       remoteAudioSource =
         null
     }
@@ -408,6 +585,12 @@ import Layout from '../layouts/Layout.astro'
     )
   }
 
+
+  /*
+   * =========================
+   * 実音声リップシンク
+   * =========================
+   */
 
   async function startRealLipSync(
     stream
@@ -445,6 +628,7 @@ import Layout from '../layouts/Layout.astro'
         // ignore
       }
 
+
       remoteAudioSource =
         null
     }
@@ -463,7 +647,7 @@ import Layout from '../layouts/Layout.astro'
 
     if (
       audioContext.state ===
-      'suspended'
+        'suspended'
     ) {
 
       try {
@@ -560,6 +744,10 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
+      /*
+       * 実際にけいの音が
+       * 出ているか
+       */
       if (
         rms >= 0.010
       ) {
@@ -582,6 +770,10 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * 画像の切替は
+       * 90ms以上空ける
+       */
       if (
         now -
         lastMouthChange >
@@ -592,6 +784,9 @@ import Layout from '../layouts/Layout.astro'
           currentMouth
 
 
+        /*
+         * 無音
+         */
         if (
           rms < 0.010
         ) {
@@ -613,6 +808,9 @@ import Layout from '../layouts/Layout.astro'
             true
 
 
+          /*
+           * 小さい声
+           */
           if (
             rms < 0.028
           ) {
@@ -621,6 +819,9 @@ import Layout from '../layouts/Layout.astro'
               'small'
 
 
+          /*
+           * 普通
+           */
           } else if (
             rms < 0.060
           ) {
@@ -632,6 +833,9 @@ import Layout from '../layouts/Layout.astro'
                 : 'open'
 
 
+          /*
+           * 大きめ
+           */
           } else {
 
             nextMouth =
@@ -673,8 +877,11 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * ユーザー情報取得
+   * =========================
+   * ユーザー初期化
+   * =========================
    */
+
   async function initializeUser() {
 
     try {
@@ -687,6 +894,9 @@ import Layout from '../layouts/Layout.astro'
           .getUser()
 
 
+      /*
+       * 未ログイン
+       */
       if (!user) {
 
         window.location.href =
@@ -696,6 +906,27 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * Googleログイン名
+       */
+      loginDisplayName =
+        user
+          .user_metadata
+          ?.full_name ||
+
+        user
+          .user_metadata
+          ?.name ||
+
+        user
+          .email ||
+
+        'ログイン中'
+
+
+      /*
+       * BARプロフィール
+       */
       const {
         data: profile,
         error,
@@ -721,6 +952,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * けいが呼ぶ名前
+       */
       if (
         profile?.display_name &&
         profile
@@ -752,6 +986,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * 記憶
+       */
       if (
         profile?.memory
       ) {
@@ -761,6 +998,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * 画面
+       */
       if (
         customerName
       ) {
@@ -768,6 +1008,16 @@ import Layout from '../layouts/Layout.astro'
         customerName
           .textContent =
             displayName
+      }
+
+
+      if (
+        loginName
+      ) {
+
+        loginName
+          .textContent =
+            `${loginDisplayName}としてログイン中`
       }
 
 
@@ -781,14 +1031,16 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      if (
-        keiState
-      ) {
+      /*
+       * 初回だけ
+       */
+      conversationStarted =
+        false
 
-        keiState
-          .textContent =
-            '待ってるよ'
-      }
+
+      setKeiState(
+        '待ってるよ'
+      )
 
 
       currentMouth =
@@ -835,8 +1087,44 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * Web検索
+   * =========================
+   * ログアウト
+   * =========================
    */
+
+  async function logout() {
+
+    try {
+
+      stopVoice()
+
+
+      await supabase
+        .auth
+        .signOut()
+
+
+      window.location.href =
+        '/'
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        'Logout error:',
+        error
+      )
+    }
+  }
+
+
+  /*
+   * =========================
+   * Web検索
+   * =========================
+   */
+
   async function handleWebSearch(
     message
   ) {
@@ -906,6 +1194,9 @@ import Layout from '../layouts/Layout.astro'
         : ''
 
 
+    /*
+     * 検索語なし
+     */
     if (!query) {
 
       dataChannel.send(
@@ -939,22 +1230,19 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
+    /*
+     * 上の状態だけ表示
+     */
     if (
       status
     ) {
 
       status.textContent =
-        'Webで調べています…🌐'
+        '調べてるよ…🌐'
     }
 
 
-    if (
-      keiState
-    ) {
-
-      keiState.textContent =
-        '🔎'
-    }
+    setKeiState('')
 
 
     try {
@@ -1039,6 +1327,8 @@ search_web の検索結果が返ってきました。
 内容を理解したうえで、
 けい自身の自然な会話として説明してください。
 
+なるべく短く答えてください。
+
 URLは読み上げないでください。
 
 検索結果に不確かな点がある場合は、
@@ -1054,16 +1344,7 @@ URLは読み上げないでください。
       ) {
 
         status.textContent =
-          'けいが確認しています…'
-      }
-
-
-      if (
-        keiState
-      ) {
-
-        keiState.textContent =
-          '♪'
+          'ちょっと待ってね…'
       }
 
 
@@ -1106,9 +1387,7 @@ URLは読み上げないでください。
 Web検索がうまくいきませんでした。
 
 知っているふりをせず、
-自然な会話として
-「ちょっと検索がうまくいかなかったみたい」
-などと伝えてください。
+自然な会話として短く伝えてください。
             `.trim(),
           },
         })
@@ -1118,11 +1397,25 @@ Web検索がうまくいきませんでした。
 
 
   /*
+   * =========================
    * 音声開始
+   * =========================
    */
+
   async function startVoice() {
 
     try {
+
+      /*
+       * 会話開始。
+       * 「待ってるよ」はここで消す。
+       */
+      conversationStarted =
+        true
+
+
+      setKeiState('')
+
 
       handledToolCalls
         .clear()
@@ -1144,17 +1437,7 @@ Web検索がうまくいきませんでした。
 
         status
           .textContent =
-            '接続しています…'
-      }
-
-
-      if (
-        keiState
-      ) {
-
-        keiState
-          .textContent =
-            'ちょっと待ってね'
+            'つないでるよ…'
       }
 
 
@@ -1166,6 +1449,9 @@ Web検索がうまくいきませんでした。
       )
 
 
+      /*
+       * Realtime token
+       */
       const tokenResponse =
         await fetch(
           '/api/realtime',
@@ -1228,10 +1514,16 @@ Web検索がうまくいきませんでした。
       }
 
 
+      /*
+       * WebRTC
+       */
       peerConnection =
         new RTCPeerConnection()
 
 
+      /*
+       * けいの音声
+       */
       if (
         remoteAudio
       ) {
@@ -1273,6 +1565,10 @@ Web検索がうまくいきませんでした。
               }
 
 
+              /*
+               * 実音声で
+               * リップシンク
+               */
               await startRealLipSync(
                 remoteStream
               )
@@ -1280,6 +1576,9 @@ Web検索がうまくいきませんでした。
       }
 
 
+      /*
+       * お客様マイク
+       */
       localStream =
         await navigator
           .mediaDevices
@@ -1314,6 +1613,9 @@ Web検索がうまくいきませんでした。
         )
 
 
+      /*
+       * DataChannel
+       */
       dataChannel =
         peerConnection
           .createDataChannel(
@@ -1325,23 +1627,20 @@ Web検索がうまくいきませんでした。
         .onopen =
           () => {
 
+            /*
+             * 会話開始後は
+             * 画像内表示なし
+             */
+            setKeiState('')
+
+
             if (
               status
             ) {
 
               status
                 .textContent =
-                  'けいにつながりました🎙️'
-            }
-
-
-            if (
-              keiState
-            ) {
-
-              keiState
-                .textContent =
-                  'いらっしゃいませ'
+                  'つながったよ🎙️'
             }
 
 
@@ -1355,6 +1654,9 @@ Web検索がうまくいきませんでした。
             }
 
 
+            /*
+             * 最初の挨拶
+             */
             dataChannel
               .send(
                 JSON.stringify({
@@ -1366,36 +1668,37 @@ Web検索がうまくいきませんでした。
                     instructions: `
 お客様が来店しました。
 
-最初の一言として、
-自然に「いらっしゃいませ」と挨拶してください。
+自然に
+「いらっしゃいませ」
+と挨拶してください。
 
 お客様の呼び名は
-「${displayName}」です。
+「${displayName}」
+です。
 
-名前を自然に入れても構いません。
+すでに知っているお客様を迎えるような、
+親しみのある短い挨拶にしてください。
 
-すでに知っているお客様を
-迎えるような、
-親しみのある挨拶にしてください。
-
-くつろいでもらう意味で
-声をかける場合は、
-
+必要なら
 「ゆっくりしていってね」
-
 と言ってください。
 
 「ゆっくり見ていってね」
 とは言わないでください。
 
-挨拶のあと、
-自然に軽く一言話しかけてください。
+挨拶は長くしないでください。
                     `.trim(),
                   },
                 })
               )
           }
 
+
+      /*
+       * =========================
+       * Realtimeイベント
+       * =========================
+       */
 
       dataChannel
         .onmessage =
@@ -1411,6 +1714,9 @@ Web検索がうまくいきませんでした。
                 )
 
 
+              /*
+               * お客様が話し始めた
+               */
               if (
                 message.type ===
                 'input_audio_buffer.speech_started'
@@ -1422,21 +1728,17 @@ Web検索がうまくいきませんでした。
 
                   status
                     .textContent =
-                      '聞いてるよ…'
+                      'うんうん…'
                 }
 
 
-                if (
-                  keiState
-                ) {
-
-                  keiState
-                    .textContent =
-                      '👂'
-                }
+                setKeiState('')
               }
 
 
+              /*
+               * お客様が話し終わった
+               */
               if (
                 message.type ===
                 'input_audio_buffer.speech_stopped'
@@ -1448,21 +1750,17 @@ Web検索がうまくいきませんでした。
 
                   status
                     .textContent =
-                      'けいが考えています…'
+                      'ちょっと考えてる…'
                 }
 
 
-                if (
-                  keiState
-                ) {
-
-                  keiState
-                    .textContent =
-                      'んー'
-                }
+                setKeiState('')
               }
 
 
+              /*
+               * けいが話している
+               */
               if (
                 message.type ===
                   'response.audio.delta' ||
@@ -1475,27 +1773,27 @@ Web検索がうまくいきませんでした。
                   true
 
 
+                /*
+                 * 喋っている時は
+                 * 文字を出さない
+                 */
                 if (
                   status
                 ) {
 
                   status
                     .textContent =
-                      'けいが話しています'
+                      ''
                 }
 
 
-                if (
-                  keiState
-                ) {
-
-                  keiState
-                    .textContent =
-                      '♪'
-                }
+                setKeiState('')
               }
 
 
+              /*
+               * Web検索
+               */
               if (
                 message.type ===
                   'response.function_call_arguments.done' &&
@@ -1511,6 +1809,9 @@ Web検索がうまくいきませんでした。
               }
 
 
+              /*
+               * 返答終了
+               */
               if (
                 message.type ===
                 'response.done'
@@ -1546,18 +1847,18 @@ Web検索がうまくいきませんでした。
                   }
 
 
-                  if (
-                    keiState
-                  ) {
-
-                    keiState
-                      .textContent =
-                        '聞いてるよ'
-                  }
+                  /*
+                   * 待ってるよには
+                   * 戻さない
+                   */
+                  setKeiState('')
                 }
               }
 
 
+              /*
+               * APIエラー
+               */
               if (
                 message.type ===
                 'error'
@@ -1577,6 +1878,9 @@ Web検索がうまくいきませんでした。
                     .textContent =
                       '音声APIでエラーが出ました'
                 }
+
+
+                setKeiState('')
               }
 
 
@@ -1591,6 +1895,12 @@ Web検索がうまくいきませんでした。
             }
           }
 
+
+      /*
+       * =========================
+       * SDP
+       * =========================
+       */
 
       const offer =
         await peerConnection
@@ -1673,14 +1983,7 @@ Web検索がうまくいきませんでした。
       }
 
 
-      if (
-        keiState
-      ) {
-
-        keiState
-          .textContent =
-            'ごめん💦'
-      }
+      setKeiState('')
 
 
       stopVoice()
@@ -1689,8 +1992,11 @@ Web検索がうまくいきませんでした。
 
 
   /*
+   * =========================
    * 音声終了
+   * =========================
    */
+
   function stopVoice() {
 
     stopRealLipSync()
@@ -1742,6 +2048,7 @@ Web検索がうまくいきませんでした。
           }
         )
 
+
       localStream =
         null
     }
@@ -1778,13 +2085,21 @@ Web検索がうまくいきませんでした。
     }
 
 
+    /*
+     * 一度会話した後は
+     * 待ってるよを戻さない
+     */
     if (
-      keiState
+      conversationStarted
     ) {
 
-      keiState
-        .textContent =
-          '待ってるよ'
+      setKeiState('')
+
+    } else {
+
+      setKeiState(
+        '待ってるよ'
+      )
     }
 
 
@@ -1823,6 +2138,12 @@ Web検索がうまくいきませんでした。
   }
 
 
+  /*
+   * =========================
+   * イベント
+   * =========================
+   */
+
   voiceButton
     ?.addEventListener(
       'click',
@@ -1837,6 +2158,13 @@ Web検索がうまくいきませんでした。
     )
 
 
+  logoutButton
+    ?.addEventListener(
+      'click',
+      logout
+    )
+
+
   window
     .addEventListener(
       'beforeunload',
@@ -1847,6 +2175,12 @@ Web検索がうまくいきませんでした。
     )
 
 
+  /*
+   * =========================
+   * 起動
+   * =========================
+   */
+
   preloadAvatarImages()
 
   initializeUser()
@@ -1854,6 +2188,10 @@ Web検索がうまくいきませんでした。
 
 
 <style>
+
+/* =========================
+   ページ全体
+   ========================= */
 
 .voice-page {
 
@@ -1863,14 +2201,17 @@ Web検索がうまくいきませんでした。
   display:
     flex;
 
+  flex-direction:
+    column;
+
   align-items:
     center;
 
   justify-content:
-    center;
+    flex-start;
 
   padding:
-    20px;
+    18px 20px 30px;
 
   background:
     radial-gradient(
@@ -1884,6 +2225,181 @@ Web検索がうまくいきませんでした。
 }
 
 
+/* =========================
+   上部ナビ
+   ========================= */
+
+.voice-topbar {
+
+  width:
+    min(
+      94vw,
+      620px
+    );
+
+  min-height:
+    42px;
+
+  margin-bottom:
+    10px;
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    space-between;
+
+  gap:
+    14px;
+
+  font-size:
+    13px;
+}
+
+
+.back-link {
+
+  display:
+    inline-flex;
+
+  align-items:
+    center;
+
+  min-height:
+    34px;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .82
+    );
+
+  text-decoration:
+    none;
+
+  white-space:
+    nowrap;
+
+  transition:
+    opacity .15s ease;
+}
+
+
+.back-link:hover {
+
+  opacity:
+    .72;
+}
+
+
+.account-area {
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    flex-end;
+
+  gap:
+    10px;
+
+  min-width:
+    0;
+}
+
+
+.login-name {
+
+  overflow:
+    hidden;
+
+  text-overflow:
+    ellipsis;
+
+  white-space:
+    nowrap;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .55
+    );
+}
+
+
+.logout-button {
+
+  flex:
+    0 0 auto;
+
+  padding:
+    6px 10px;
+
+  border:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      .18
+    );
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      .06
+    );
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .84
+    );
+
+  font-size:
+    12px;
+
+  cursor:
+    pointer;
+
+  transition:
+    background .15s ease;
+}
+
+
+.logout-button:hover {
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      .12
+    );
+}
+
+
+/* =========================
+   メインカード
+   ========================= */
+
 .bar-card {
 
   width:
@@ -1893,7 +2409,7 @@ Web検索がうまくいきませんでした。
     );
 
   padding:
-    28px 24px 32px;
+    22px 24px 32px;
 
   text-align:
     center;
@@ -1934,47 +2450,29 @@ Web検索がうまくいきませんでした。
 }
 
 
-.title {
+/* =========================
+   名前＋状態
+   ========================= */
 
-  margin-bottom:
-    8px;
+.voice-meta {
 
-  font-size:
-    26px;
+  display:
+    flex;
 
-  font-weight:
-    bold;
+  align-items:
+    center;
 
-  letter-spacing:
-    .06em;
-}
+  justify-content:
+    center;
 
-
-.customer-name {
-
-  margin-bottom:
+  gap:
     12px;
 
-  font-size:
-    13px;
-
-  color:
-    rgba(
-      255,
-      255,
-      255,
-      .58
-    );
-}
-
-
-.status {
-
   min-height:
-    24px;
+    26px;
 
   margin-bottom:
-    16px;
+    14px;
 
   font-size:
     14px;
@@ -1989,8 +2487,38 @@ Web検索がうまくいきませんでした。
 }
 
 
+.customer-name {
+
+  font-weight:
+    700;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .94
+    );
+}
+
+
+.status {
+
+  min-width:
+    0;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .72
+    );
+}
+
+
 /* =========================
-   けい＋バックバー
+   BARエリア
    ========================= */
 
 .kei-area {
@@ -1998,20 +2526,11 @@ Web検索がうまくいきませんでした。
   position:
     relative;
 
-  min-height:
+  height:
     430px;
 
   margin-bottom:
     24px;
-
-  display:
-    flex;
-
-  align-items:
-    flex-end;
-
-  justify-content:
-    center;
 
   overflow:
     hidden;
@@ -2036,12 +2555,19 @@ Web検索がうまくいきませんでした。
 }
 
 
+/* =========================
+   バックバー
+   ========================= */
+
 .kei-area__bg {
 
   position:
     absolute;
 
   inset:
+    0;
+
+  z-index:
     0;
 
   background-image:
@@ -2051,7 +2577,7 @@ Web検索がうまくいきませんでした。
     cover;
 
   background-position:
-    center;
+    center 40%;
 
   transform:
     scale(1.03);
@@ -2062,6 +2588,10 @@ Web検索がうまくいきませんでした。
 }
 
 
+/* =========================
+   背景の明暗
+   ========================= */
+
 .kei-area__overlay {
 
   position:
@@ -2070,89 +2600,100 @@ Web検索がうまくいきませんでした。
   inset:
     0;
 
+  z-index:
+    1;
+
   background:
     linear-gradient(
       to bottom,
+
       rgba(
         20,
         10,
         5,
-        .10
+        .05
       ) 0%,
 
       rgba(
         20,
         10,
         5,
-        .15
-      ) 42%,
+        .08
+      ) 48%,
 
       rgba(
         10,
         5,
         3,
-        .48
+        .18
       ) 100%
     );
+
+  pointer-events:
+    none;
 }
 
+
+/* =========================
+   けいレイヤー
+   ========================= */
 
 .kei-area__inner {
 
   position:
-    relative;
+    absolute;
+
+  inset:
+    0;
 
   z-index:
     2;
 
-  width:
-    100%;
-
-  min-height:
-    430px;
-
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  align-items:
-    center;
-
-  justify-content:
-    flex-end;
-
-  padding:
-    16px 12px 14px;
+  pointer-events:
+    none;
 }
 
 
+/* =========================
+   けい
+   ========================= */
+
 .kei-avatar {
 
-  display:
-    block;
+  position:
+    absolute;
+
+  left:
+    50%;
+
+  /*
+   * 上げすぎない。
+   * カウンターの後ろに
+   * 自然に入る位置。
+   */
+  bottom:
+    18px;
 
   width:
-    min(
-      88vw,
-      430px
-    );
+    430px;
+
+  max-width:
+    86%;
 
   max-height:
-    400px;
+    405px;
 
   height:
     auto;
-
-  margin:
-    0 auto 8px;
 
   object-fit:
     contain;
 
   object-position:
     center bottom;
+
+  transform:
+    translateX(-50%);
 
   filter:
     drop-shadow(
@@ -2172,16 +2713,82 @@ Web検索がうまくいきませんでした。
 
   -webkit-user-drag:
     none;
+
+  pointer-events:
+    none;
 }
 
+
+/* =========================
+   前景カウンター
+   ========================= */
+
+.kei-counter-front {
+
+  position:
+    absolute;
+
+  left:
+    0;
+
+  bottom:
+    0;
+
+  z-index:
+    5;
+
+  /*
+   * 元画像は縦長なので
+   * 天板付近だけを切り出す。
+   */
+  width:
+    100%;
+
+  height:
+    92px;
+
+  object-fit:
+    cover;
+
+  /*
+   * ここが重要。
+   * 元画像の約2/3付近にある
+   * 明るい木の天板を表示。
+   */
+  object-position:
+    center 66%;
+
+  pointer-events:
+    none;
+
+  user-select:
+    none;
+
+  -webkit-user-drag:
+    none;
+}
+
+
+/* =========================
+   最初だけ「待ってるよ」
+   ========================= */
 
 .kei-state {
 
   position:
-    relative;
+    absolute;
 
   z-index:
-    3;
+    10;
+
+  left:
+    50%;
+
+  bottom:
+    18px;
+
+  transform:
+    translateX(-50%);
 
   min-height:
     20px;
@@ -2197,7 +2804,7 @@ Web検索がうまくいきませんでした。
       0,
       0,
       0,
-      .28
+      .54
     );
 
   color:
@@ -2205,16 +2812,41 @@ Web検索がうまくいきませんでした。
       255,
       255,
       255,
-      .88
+      .94
     );
 
   font-size:
     14px;
 
+  white-space:
+    nowrap;
+
   backdrop-filter:
     blur(5px);
+
+  box-shadow:
+    0
+    3px
+    12px
+    rgba(
+      0,
+      0,
+      0,
+      .25
+    );
 }
 
+
+.kei-state:empty {
+
+  display:
+    none;
+}
+
+
+/* =========================
+   ボタン
+   ========================= */
 
 .voice-button,
 .stop-button {
@@ -2314,7 +2946,59 @@ Web検索がうまくいきませんでした。
   .voice-page {
 
     padding:
+      10px 8px 24px;
+  }
+
+
+  .voice-topbar {
+
+    width:
+      100%;
+
+    padding:
+      0 4px;
+
+    margin-bottom:
       8px;
+
+    flex-direction:
+      column;
+
+    align-items:
+      stretch;
+
+    gap:
+      6px;
+  }
+
+
+  .back-link {
+
+    justify-content:
+      center;
+
+    min-height:
+      30px;
+  }
+
+
+  .account-area {
+
+    justify-content:
+      center;
+
+    flex-wrap:
+      wrap;
+  }
+
+
+  .login-name {
+
+    max-width:
+      72vw;
+
+    text-align:
+      center;
   }
 
 
@@ -2324,13 +3008,29 @@ Web検索がうまくいきませんでした。
       100%;
 
     padding:
-      20px 12px 24px;
+      18px 12px 24px;
+  }
+
+
+  .voice-meta {
+
+    gap:
+      9px;
+
+    margin-bottom:
+      12px;
+
+    font-size:
+      13px;
+
+    flex-wrap:
+      wrap;
   }
 
 
   .kei-area {
 
-    min-height:
+    height:
       340px;
 
     border-radius:
@@ -2338,40 +3038,53 @@ Web検索がうまくいきませんでした。
   }
 
 
-  .kei-area__inner {
-
-    min-height:
-      340px;
-
-    padding:
-      12px 8px 12px;
-  }
-
-
   .kei-area__bg {
 
     background-position:
-      center center;
+      center 40%;
   }
 
 
   .kei-avatar {
 
+    bottom:
+      14px;
+
     width:
-      min(
-        94vw,
-        330px
-      );
+      330px;
+
+    max-width:
+      88%;
 
     max-height:
-      310px;
+      320px;
   }
 
 
-  .title {
+  /*
+   * スマホも
+   * カウンターの天板を表示
+   */
+  .kei-counter-front {
+
+    height:
+      72px;
+
+    object-position:
+      center 66%;
+  }
+
+
+  .kei-state {
+
+    bottom:
+      12px;
 
     font-size:
-      23px;
+      13px;
+
+    padding:
+      4px 10px;
   }
 }
 
