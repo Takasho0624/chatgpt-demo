@@ -10,6 +10,10 @@ import 'highlight.js/styles/atom-one-dark.css'
 
 <Layout title="★けいのBAR">
   <main>
+    <button id="logout-button" class="logout-button">
+      ログアウト
+    </button>
+
     <Header />
     <Generator client:load />
     <Footer />
@@ -28,4 +32,31 @@ async function checkCurrentAuth() {
 }
 
 checkCurrentAuth()
+
+const logoutButton = document.getElementById('logout-button')
+
+logoutButton?.addEventListener('click', async () => {
+  await supabase.auth.signOut()
+  window.location.href = '/password'
+})
 </script>
+
+<style>
+.logout-button {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.logout-button:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+</style>
