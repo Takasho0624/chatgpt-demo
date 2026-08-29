@@ -11,18 +11,22 @@ import Layout from '../layouts/Layout.astro'
         けいのBAR
       </div>
 
+      <div id="customer-name" class="customer-name">
+        お客様情報を確認しています…
+      </div>
+
       <div id="status" class="status">
-        マイクを押してね🍸
+        少し待ってね🍸
       </div>
 
       <div class="kei-area">
 
         <div class="kei-icon">
-          K
+          けい
         </div>
 
         <div id="kei-state" class="kei-state">
-          待ってるよ
+          準備中
         </div>
 
       </div>
@@ -31,6 +35,7 @@ import Layout from '../layouts/Layout.astro'
         id="voice-button"
         class="voice-button"
         type="button"
+        disabled
       >
         🎙️ けいと話す
       </button>
@@ -55,27 +60,160 @@ import Layout from '../layouts/Layout.astro'
 </Layout>
 
 <script>
+  import { supabase } from '../utils/supabase'
+
   let peerConnection = null
   let localStream = null
   let dataChannel = null
 
-  const voiceButton = document.getElementById('voice-button')
-  const stopButton = document.getElementById('stop-button')
-  const status = document.getElementById('status')
-  const keiState = document.getElementById('kei-state')
-  const remoteAudio = document.getElementById('remote-audio')
+  let displayName = 'お客様'
+  let memory = ''
+
+  const voiceButton =
+    document.getElementById('voice-button')
+
+  const stopButton =
+    document.getElementById('stop-button')
+
+  const status =
+    document.getElementById('status')
+
+  const keiState =
+    document.getElementById('kei-state')
+
+  const customerName =
+    document.getElementById('customer-name')
+
+  const remoteAudio =
+    document.getElementById('remote-audio')
+
+
+  async function initializeUser() {
+    try {
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        window.location.href = '/password'
+        return
+      }
+
+      const {
+        data: profile,
+        error,
+      } = await supabase
+        .from('profiles')
+        .select(
+          'display_name, memory, name_confirmed'
+        )
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (error) {
+        console.error(
+          'Profile error:',
+          error
+        )
+      }
+
+      if (
+        profile?.display_name &&
+        profile.display_name.trim()
+      ) {
+        displayName =
+          profile.display_name.trim()
+      } else {
+
+        displayName =
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email?.split('@')[0] ||
+          'お客様'
+      }
+
+      if (profile?.memory) {
+        memory = profile.memory
+      }
+
+      if (customerName) {
+        customerName.textContent =
+          `${displayName}`
+      }
+
+      if (status) {
+        status.textContent =
+          'マイクを押してね🍸'
+      }
+
+      if (keiState) {
+        keiState.textContent =
+          '待ってるよ'
+      }
+
+      if (voiceButton) {
+        voiceButton.disabled = false
+      }
+
+    } catch (error) {
+
+      console.error(
+        'Initialize error:',
+        error
+      )
+
+      if (status) {
+        status.textContent =
+          'ユーザー情報を取得できませんでした'
+      }
+    }
+  }
+
 
   async function startVoice() {
     try {
 
-      voiceButton.disabled = true
+      if (voiceButton) {
+        voiceButton.disabled = true
+      }
 
-      status.textContent = '接続しています…'
-      keiState.textContent = 'ちょっと待ってね'
+      if (status) {
+        status.textContent =
+          '接続しています…'
+      }
 
-      const tokenResponse = await fetch('/api/realtime', {
-        method: 'POST',
-      })
+      if (keiState) {
+        keiState.textContent =
+          'ちょっと待ってね'
+      }
+
+
+      /*
+       * Realtime用の一時キーを取得
+       *
+       * ここで文字版の
+       * ニックネームと長期記憶を
+       * realtime.ts に渡す
+       */
+      const tokenResponse =
+        await fetch(
+          '/api/realtime',
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body: JSON.stringify({
+              displayName,
+              memory,
+            }),
+          }
+        )
+
 
       if (!tokenResponse.ok) {
         throw new Error(
@@ -83,158 +221,321 @@ import Layout from '../layouts/Layout.astro'
         )
       }
 
+
       const tokenData =
         await tokenResponse.json()
+
+
+      console.log(
+        'Realtime token response:',
+        tokenData
+      )
+
 
       const ephemeralKey =
         tokenData.value ||
         tokenData.client_secret?.value ||
         tokenData.client_secret
 
+
       if (!ephemeralKey) {
-        console.error(tokenData)
+
+        console.error(
+          tokenData
+        )
+
         throw new Error(
           'Realtime token が取得できませんでした'
         )
       }
 
+
+      /*
+       * WebRTC接続
+       */
       peerConnection =
         new RTCPeerConnection()
 
-      remoteAudio.autoplay = true
 
-      peerConnection.ontrack = (event) => {
-        remoteAudio.srcObject =
-          event.streams[0]
+      /*
+       * けいの音声を再生
+       */
+      if (remoteAudio) {
+
+        remoteAudio.autoplay = true
+
+        peerConnection.ontrack =
+          (event) => {
+
+            remoteAudio.srcObject =
+              event.streams[0]
+          }
       }
 
+
+      /*
+       * お客様のマイク
+       */
       localStream =
-        await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        })
+        await navigator.mediaDevices
+          .getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          })
+
 
       localStream
         .getTracks()
-        .forEach((track) => {
-          peerConnection.addTrack(
-            track,
-            localStream
-          )
-        })
+        .forEach(
+          (track) => {
 
-      dataChannel =
-        peerConnection.createDataChannel(
-          'oai-events'
+            peerConnection.addTrack(
+              track,
+              localStream
+            )
+          }
         )
+
+
+      /*
+       * Realtimeイベント用
+       * DataChannel
+       */
+      dataChannel =
+        peerConnection
+          .createDataChannel(
+            'oai-events'
+          )
+
 
       dataChannel.onopen = () => {
 
-        status.textContent =
-          '話しかけてね🎙️'
+        console.log(
+          'Realtime connected'
+        )
 
-        keiState.textContent =
-          '聞いてるよ'
+        if (status) {
+          status.textContent =
+            'けいにつながりました🎙️'
+        }
 
-        stopButton.disabled = false
+        if (keiState) {
+          keiState.textContent =
+            'いらっしゃいませ'
+        }
 
+        if (stopButton) {
+          stopButton.disabled = false
+        }
+
+
+        /*
+         * けいから先に挨拶
+         */
         dataChannel.send(
           JSON.stringify({
-            type: 'response.create',
+            type:
+              'response.create',
+
             response: {
-              instructions:
-                '最初に短く自然に挨拶してください。',
+              instructions: `
+お客様が来店しました。
+
+最初の一言として、
+自然に「いらっしゃいませ」と挨拶してください。
+
+お客様の呼び名は
+「${displayName}」です。
+
+名前を自然に入れても構いません。
+
+たとえば、
+「いらっしゃいませ、${displayName}」
+のような感じです。
+
+ただし、
+定型文を読み上げるような
+接客口調にはしないでください。
+
+すでに知っているお客様を
+迎えるような、
+自然で親しみのある挨拶にしてください。
+
+挨拶のあと、
+軽く一言話しかけてください。
+              `.trim(),
             },
           })
         )
       }
 
-      dataChannel.onmessage = (event) => {
 
-        try {
+      dataChannel.onmessage =
+        (event) => {
 
-          const message =
-            JSON.parse(event.data)
+          try {
 
-          console.log(
-            'Realtime event:',
-            message
-          )
+            const message =
+              JSON.parse(
+                event.data
+              )
 
-          if (
-            message.type ===
-            'input_audio_buffer.speech_started'
-          ) {
-            status.textContent =
-              '聞いています…'
+            console.log(
+              'Realtime event:',
+              message
+            )
 
-            keiState.textContent =
-              'うんうん'
+
+            /*
+             * お客様が話し始めた
+             */
+            if (
+              message.type ===
+              'input_audio_buffer.speech_started'
+            ) {
+
+              if (status) {
+                status.textContent =
+                  '聞いてるよ…'
+              }
+
+              if (keiState) {
+                keiState.textContent =
+                  '👂'
+              }
+            }
+
+
+            /*
+             * お客様が話し終わった
+             */
+            if (
+              message.type ===
+              'input_audio_buffer.speech_stopped'
+            ) {
+
+              if (status) {
+                status.textContent =
+                  'けいが考えています…'
+              }
+
+              if (keiState) {
+                keiState.textContent =
+                  'んー'
+              }
+            }
+
+
+            /*
+             * けいが話している
+             */
+            if (
+              message.type ===
+              'response.audio.delta'
+            ) {
+
+              if (status) {
+                status.textContent =
+                  'けいが話しています'
+              }
+
+              if (keiState) {
+                keiState.textContent =
+                  '♪'
+              }
+            }
+
+
+            /*
+             * 返答終了
+             */
+            if (
+              message.type ===
+              'response.done'
+            ) {
+
+              if (status) {
+                status.textContent =
+                  '話しかけてね🎙️'
+              }
+
+              if (keiState) {
+                keiState.textContent =
+                  '聞いてるよ'
+              }
+            }
+
+
+            /*
+             * APIエラー
+             */
+            if (
+              message.type ===
+              'error'
+            ) {
+
+              console.error(
+                'Realtime API error:',
+                message
+              )
+
+              if (status) {
+                status.textContent =
+                  '音声APIでエラーが出ました'
+              }
+            }
+
+          } catch (error) {
+
+            console.error(
+              'Realtime message error:',
+              error
+            )
           }
-
-          if (
-            message.type ===
-            'input_audio_buffer.speech_stopped'
-          ) {
-            status.textContent =
-              'けいが考えています…'
-
-            keiState.textContent =
-              'んー…'
-          }
-
-          if (
-            message.type ===
-            'response.audio.delta'
-          ) {
-            status.textContent =
-              'けいが話しています'
-
-            keiState.textContent =
-              '♪'
-          }
-
-          if (
-            message.type ===
-            'response.done'
-          ) {
-            status.textContent =
-              '話しかけてね🎙️'
-
-            keiState.textContent =
-              '聞いてるよ'
-          }
-
-        } catch (error) {
-          console.error(error)
         }
-      }
 
+
+      /*
+       * WebRTC Offer
+       */
       const offer =
-        await peerConnection.createOffer()
+        await peerConnection
+          .createOffer()
 
-      await peerConnection.setLocalDescription(
-        offer
-      )
 
-      const sdpResponse = await fetch(
-        'https://api.openai.com/v1/realtime/calls',
-        {
-          method: 'POST',
+      await peerConnection
+        .setLocalDescription(
+          offer
+        )
 
-          headers: {
-            Authorization:
-              `Bearer ${ephemeralKey}`,
 
-            'Content-Type':
-              'application/sdp',
-          },
+      /*
+       * OpenAIへSDPを送る
+       */
+      const sdpResponse =
+        await fetch(
+          'https://api.openai.com/v1/realtime/calls',
+          {
+            method: 'POST',
 
-          body:
-            peerConnection
-              .localDescription
-              .sdp,
-        }
-      )
+            headers: {
+              Authorization:
+                `Bearer ${ephemeralKey}`,
+
+              'Content-Type':
+                'application/sdp',
+            },
+
+            body:
+              peerConnection
+                .localDescription
+                .sdp,
+          }
+        )
+
 
       if (!sdpResponse.ok) {
         throw new Error(
@@ -242,86 +543,135 @@ import Layout from '../layouts/Layout.astro'
         )
       }
 
+
       const answerSdp =
         await sdpResponse.text()
 
-      await peerConnection.setRemoteDescription({
-        type: 'answer',
-        sdp: answerSdp,
-      })
+
+      await peerConnection
+        .setRemoteDescription({
+          type: 'answer',
+          sdp: answerSdp,
+        })
+
 
     } catch (error) {
 
-      console.error(error)
+      console.error(
+        'Voice start error:',
+        error
+      )
 
-      status.textContent =
-        '接続できませんでした'
+      if (status) {
+        status.textContent =
+          '接続できませんでした'
+      }
 
-      keiState.textContent =
-        'ごめん💦'
-
-      voiceButton.disabled = false
+      if (keiState) {
+        keiState.textContent =
+          'ごめん💦'
+      }
 
       stopVoice()
     }
   }
 
+
   function stopVoice() {
 
     if (dataChannel) {
+
       dataChannel.close()
+
       dataChannel = null
     }
 
+
     if (peerConnection) {
+
       peerConnection.close()
+
       peerConnection = null
     }
+
 
     if (localStream) {
 
       localStream
         .getTracks()
-        .forEach((track) =>
-          track.stop()
+        .forEach(
+          (track) =>
+            track.stop()
         )
 
       localStream = null
     }
 
-    status.textContent =
-      'マイクを押してね🍸'
 
-    keiState.textContent =
-      '待ってるよ'
+    if (remoteAudio) {
+      remoteAudio.srcObject = null
+    }
 
-    voiceButton.disabled = false
-    stopButton.disabled = true
+
+    if (status) {
+      status.textContent =
+        'マイクを押してね🍸'
+    }
+
+    if (keiState) {
+      keiState.textContent =
+        '待ってるよ'
+    }
+
+    if (voiceButton) {
+      voiceButton.disabled = false
+    }
+
+    if (stopButton) {
+      stopButton.disabled = true
+    }
   }
 
-  voiceButton?.addEventListener(
-    'click',
-    startVoice
-  )
 
-  stopButton?.addEventListener(
-    'click',
-    stopVoice
-  )
+  voiceButton
+    ?.addEventListener(
+      'click',
+      startVoice
+    )
+
+
+  stopButton
+    ?.addEventListener(
+      'click',
+      stopVoice
+    )
+
 
   window.addEventListener(
     'beforeunload',
     stopVoice
   )
+
+
+  /*
+   * ページを開いたら
+   * まずログイン情報と
+   * profileを取得
+   */
+  initializeUser()
 </script>
+
 
 <style>
 
 .voice-page {
+
   min-height: 100vh;
 
   display: flex;
+
   align-items: center;
+
   justify-content: center;
 
   padding: 20px;
@@ -336,65 +686,137 @@ import Layout from '../layouts/Layout.astro'
   color: white;
 }
 
-.bar-card {
-  width: min(92vw, 440px);
 
-  padding: 36px 28px;
+.bar-card {
+
+  width:
+    min(92vw, 440px);
+
+  padding:
+    36px 28px;
 
   text-align: center;
 
   border:
-    1px solid rgba(255,255,255,.15);
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      .15
+    );
 
-  border-radius: 22px;
+  border-radius:
+    22px;
 
   background:
-    rgba(10,5,3,.72);
+    rgba(
+      10,
+      5,
+      3,
+      .72
+    );
 
   box-shadow:
-    0 20px 70px
-    rgba(0,0,0,.45);
+    0
+    20px
+    70px
+    rgba(
+      0,
+      0,
+      0,
+      .45
+    );
 }
+
 
 .title {
-  margin-bottom: 18px;
 
-  font-size: 25px;
-  font-weight: bold;
+  margin-bottom:
+    8px;
 
-  letter-spacing: .06em;
+  font-size:
+    25px;
+
+  font-weight:
+    bold;
+
+  letter-spacing:
+    .06em;
 }
 
-.status {
-  min-height: 24px;
 
-  margin-bottom: 30px;
+.customer-name {
 
-  font-size: 14px;
+  margin-bottom:
+    16px;
+
+  font-size:
+    13px;
 
   color:
-    rgba(255,255,255,.72);
+    rgba(
+      255,
+      255,
+      255,
+      .58
+    );
 }
 
-.kei-area {
-  margin-bottom: 32px;
+
+.status {
+
+  min-height:
+    24px;
+
+  margin-bottom:
+    30px;
+
+  font-size:
+    14px;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .72
+    );
 }
+
+
+.kei-area {
+
+  margin-bottom:
+    32px;
+}
+
 
 .kei-icon {
 
-  width: 150px;
-  height: 150px;
+  width:
+    150px;
+
+  height:
+    150px;
 
   margin:
     0 auto 14px;
 
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display:
+    flex;
 
-  border-radius: 50%;
+  align-items:
+    center;
 
-  font-size: 56px;
+  justify-content:
+    center;
+
+  border-radius:
+    50%;
+
+  font-size:
+    28px;
 
   background:
     linear-gradient(
@@ -404,66 +826,117 @@ import Layout from '../layouts/Layout.astro'
     );
 
   box-shadow:
-    0 12px 38px
-    rgba(0,0,0,.45);
+    0
+    12px
+    38px
+    rgba(
+      0,
+      0,
+      0,
+      .45
+    );
 }
+
 
 .kei-state {
 
-  font-size: 14px;
+  font-size:
+    14px;
 
   color:
-    rgba(255,255,255,.8);
+    rgba(
+      255,
+      255,
+      255,
+      .8
+    );
 }
+
 
 .voice-button,
 .stop-button {
 
-  width: 100%;
+  width:
+    100%;
 
-  padding: 15px 20px;
+  padding:
+    15px 20px;
 
-  border: none;
-  border-radius: 12px;
+  border:
+    none;
 
-  font-size: 16px;
+  border-radius:
+    12px;
 
-  cursor: pointer;
+  font-size:
+    16px;
+
+  cursor:
+    pointer;
 }
+
 
 .voice-button {
 
-  margin-bottom: 12px;
+  margin-bottom:
+    12px;
 
-  background: #f6eee7;
+  background:
+    #f6eee7;
 
-  color: #24120d;
+  color:
+    #24120d;
 }
+
 
 .voice-button:hover {
-  opacity: .92;
+
+  opacity:
+    .92;
 }
 
+
 .voice-button:disabled {
-  opacity: .45;
-  cursor: default;
+
+  opacity:
+    .45;
+
+  cursor:
+    default;
 }
+
 
 .stop-button {
 
   background:
-    rgba(255,255,255,.08);
+    rgba(
+      255,
+      255,
+      255,
+      .08
+    );
 
-  color: white;
+  color:
+    white;
 
   border:
     1px solid
-    rgba(255,255,255,.18);
+    rgba(
+      255,
+      255,
+      255,
+      .18
+    );
 }
 
+
 .stop-button:disabled {
-  opacity: .35;
-  cursor: default;
+
+  opacity:
+    .35;
+
+  cursor:
+    default;
 }
 
 </style>
