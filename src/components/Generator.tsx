@@ -448,10 +448,10 @@ export default () => {
 
       let profileContext = ''
 
-      if (nameConfirmed() && profileName()) {
-        profileContext +=
-          `このユーザーの希望する呼び名は「${profileName()}」。`
-      }
+if (nameConfirmed() && profileName()) {
+  profileContext +=
+    `このユーザーの希望する呼び名は「${formatDisplayName(profileName())}」。必ずこの呼び名で呼んでください。`
+}
 
       if (profileMemory()) {
         profileContext +=
