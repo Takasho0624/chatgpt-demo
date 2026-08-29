@@ -21,15 +21,22 @@ import Layout from '../layouts/Layout.astro'
 
       <div class="kei-area">
 
-        <img
-          id="kei-avatar"
-          src="/kei-mouth-close.png"
-          alt="けい"
-          class="kei-avatar"
-        />
+        <div class="kei-area__bg"></div>
+        <div class="kei-area__overlay"></div>
 
-        <div id="kei-state" class="kei-state">
-          準備中
+        <div class="kei-area__inner">
+
+          <img
+            id="kei-avatar"
+            src="/kei-mouth-close.png"
+            alt="けい"
+            class="kei-avatar"
+          />
+
+          <div id="kei-state" class="kei-state">
+            準備中
+          </div>
+
         </div>
 
       </div>
@@ -94,8 +101,7 @@ import Layout from '../layouts/Layout.astro'
   let isBlinking = false
 
   /*
-   * Web検索のFunction Call
-   * 二重実行防止
+   * Web検索
    */
   const handledToolCalls =
     new Set()
@@ -150,10 +156,6 @@ import Layout from '../layouts/Layout.astro'
     )
 
 
-  /*
-   * 画像を先読み
-   * 初回の切替でチラつかないようにする
-   */
   function preloadAvatarImages() {
 
     [
@@ -172,19 +174,12 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
-  /*
-   * 口の状態を変更
-   */
   function setMouth(type) {
 
     if (!keiAvatar) {
       return
     }
 
-    /*
-     * まばたき中は
-     * 口画像で上書きしない
-     */
     if (isBlinking) {
       return
     }
@@ -228,10 +223,7 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * まばたき予約
-   *
-   * 約4.5〜8.5秒の
-   * ランダム間隔
+   * まばたき
    */
   function scheduleBlink() {
 
@@ -255,10 +247,6 @@ import Layout from '../layouts/Layout.astro'
       setTimeout(
         () => {
 
-          /*
-           * しゃべっていない時だけ
-           * 瞬きする
-           */
           if (
             !isKeiSpeaking &&
             !isBlinking &&
@@ -277,9 +265,6 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
-  /*
-   * 1回だけ瞬き
-   */
   function blinkOnce() {
 
     if (
@@ -296,9 +281,6 @@ import Layout from '../layouts/Layout.astro'
       true
 
 
-    /*
-     * 目を閉じる
-     */
     keiAvatar.src =
       BLINK_SRC
 
@@ -313,9 +295,6 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
-    /*
-     * 140ms後に目を開く
-     */
     blinkReturnTimer =
       setTimeout(
         () => {
@@ -324,10 +303,6 @@ import Layout from '../layouts/Layout.astro'
             false
 
 
-          /*
-           * 瞬き中に喋り始めていなければ
-           * 通常の閉じ口へ戻す
-           */
           if (
             !isKeiSpeaking &&
             keiAvatar
@@ -346,9 +321,6 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
-  /*
-   * まばたき停止
-   */
   function stopBlinking() {
 
     if (
@@ -383,7 +355,7 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * リップシンク停止
+   * リップシンク
    */
   function stopRealLipSync() {
 
@@ -411,7 +383,7 @@ import Layout from '../layouts/Layout.astro'
 
       } catch (error) {
 
-        // 何もしない
+        // ignore
       }
 
       remoteAudioSource =
@@ -437,10 +409,6 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
-  /*
-   * 実際のけいの音声波形を解析して
-   * 口を動かす
-   */
   async function startRealLipSync(
     stream
   ) {
@@ -450,9 +418,6 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
-    /*
-     * 前回の解析を停止
-     */
     if (
       lipSyncFrame
     ) {
@@ -477,7 +442,7 @@ import Layout from '../layouts/Layout.astro'
 
       } catch (error) {
 
-        // 何もしない
+        // ignore
       }
 
       remoteAudioSource =
@@ -525,10 +490,6 @@ import Layout from '../layouts/Layout.astro'
       512
 
 
-    /*
-     * ガチャガチャしすぎないよう
-     * 少し平滑化
-     */
     analyser
       .smoothingTimeConstant =
         0.70
@@ -570,9 +531,6 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
-      /*
-       * RMSで実際の音量を計算
-       */
       let sum =
         0
 
@@ -602,9 +560,6 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
-      /*
-       * 実際に音声が出ているか
-       */
       if (
         rms >= 0.010
       ) {
@@ -617,10 +572,6 @@ import Layout from '../layouts/Layout.astro'
         silenceFrames++
 
 
-        /*
-         * 一瞬の無音では
-         * 喋り終わり扱いにしない
-         */
         if (
           silenceFrames > 7
         ) {
@@ -631,10 +582,6 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      /*
-       * 90ms以上たった時だけ
-       * 画像を切替
-       */
       if (
         now -
         lastMouthChange >
@@ -645,9 +592,6 @@ import Layout from '../layouts/Layout.astro'
           currentMouth
 
 
-        /*
-         * 無音
-         */
         if (
           rms < 0.010
         ) {
@@ -669,9 +613,6 @@ import Layout from '../layouts/Layout.astro'
             true
 
 
-          /*
-           * 小さめの声
-           */
           if (
             rms < 0.028
           ) {
@@ -680,17 +621,10 @@ import Layout from '../layouts/Layout.astro'
               'small'
 
 
-          /*
-           * 普通の声
-           */
           } else if (
             rms < 0.060
           ) {
 
-            /*
-             * 大口を減らして
-             * 半開きを多めに
-             */
             nextMouth =
               Math.random() <
               0.78
@@ -698,9 +632,6 @@ import Layout from '../layouts/Layout.astro'
                 : 'open'
 
 
-          /*
-           * 大きめの声
-           */
           } else {
 
             nextMouth =
@@ -868,10 +799,6 @@ import Layout from '../layouts/Layout.astro'
       )
 
 
-      /*
-       * ページ表示後から
-       * 自然な瞬きを開始
-       */
       scheduleBlink()
 
 
@@ -908,7 +835,7 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * Web検索Function Call
+   * Web検索
    */
   async function handleWebSearch(
     message
@@ -928,9 +855,7 @@ import Layout from '../layouts/Layout.astro'
       message.call_id
 
 
-    if (
-      !callId
-    ) {
+    if (!callId) {
 
       console.error(
         'search_web: call_id がありません',
@@ -1307,9 +1232,6 @@ Web検索がうまくいきませんでした。
         new RTCPeerConnection()
 
 
-      /*
-       * けいの音声
-       */
       if (
         remoteAudio
       ) {
@@ -1351,10 +1273,6 @@ Web検索がうまくいきませんでした。
               }
 
 
-              /*
-               * 実音声で
-               * リップシンク開始
-               */
               await startRealLipSync(
                 remoteStream
               )
@@ -1362,9 +1280,6 @@ Web検索がうまくいきませんでした。
       }
 
 
-      /*
-       * お客様マイク
-       */
       localStream =
         await navigator
           .mediaDevices
@@ -1399,9 +1314,6 @@ Web検索がうまくいきませんでした。
         )
 
 
-      /*
-       * DataChannel
-       */
       dataChannel =
         peerConnection
           .createDataChannel(
@@ -1443,9 +1355,6 @@ Web検索がうまくいきませんでした。
             }
 
 
-            /*
-             * 最初の挨拶
-             */
             dataChannel
               .send(
                 JSON.stringify({
@@ -1488,9 +1397,6 @@ Web検索がうまくいきませんでした。
           }
 
 
-      /*
-       * Realtimeイベント
-       */
       dataChannel
         .onmessage =
           async (
@@ -1505,9 +1411,6 @@ Web検索がうまくいきませんでした。
                 )
 
 
-              /*
-               * お客様が話し始めた
-               */
               if (
                 message.type ===
                 'input_audio_buffer.speech_started'
@@ -1534,9 +1437,6 @@ Web検索がうまくいきませんでした。
               }
 
 
-              /*
-               * お客様が話し終わった
-               */
               if (
                 message.type ===
                 'input_audio_buffer.speech_stopped'
@@ -1563,9 +1463,6 @@ Web検索がうまくいきませんでした。
               }
 
 
-              /*
-               * けいが喋っている
-               */
               if (
                 message.type ===
                   'response.audio.delta' ||
@@ -1599,9 +1496,6 @@ Web検索がうまくいきませんでした。
               }
 
 
-              /*
-               * Web検索
-               */
               if (
                 message.type ===
                   'response.function_call_arguments.done' &&
@@ -1617,9 +1511,6 @@ Web検索がうまくいきませんでした。
               }
 
 
-              /*
-               * 通常返答終了
-               */
               if (
                 message.type ===
                 'response.done'
@@ -1641,10 +1532,6 @@ Web検索がうまくいきませんでした。
                     )
 
 
-                /*
-                 * Function Callではない
-                 * 通常回答だけ表示を戻す
-                 */
                 if (
                   !hasFunctionCall
                 ) {
@@ -1671,9 +1558,6 @@ Web検索がうまくいきませんでした。
               }
 
 
-              /*
-               * APIエラー
-               */
               if (
                 message.type ===
                 'error'
@@ -1708,9 +1592,6 @@ Web検索がうまくいきませんでした。
           }
 
 
-      /*
-       * WebRTC Offer
-       */
       const offer =
         await peerConnection
           .createOffer()
@@ -1918,10 +1799,6 @@ Web検索がうまくいきませんでした。
     )
 
 
-    /*
-     * 接続終了後も
-     * 待機中のまばたきは続ける
-     */
     scheduleBlink()
 
 
@@ -1966,8 +1843,6 @@ Web検索がうまくいきませんでした。
       () => {
 
         stopBlinking()
-
-        stopVoice()
       }
     )
 
@@ -2000,8 +1875,8 @@ Web検索がうまくいきませんでした。
   background:
     radial-gradient(
       circle at center,
-      #392116,
-      #120907 70%
+      #221611,
+      #080504 72%
     );
 
   color:
@@ -2014,7 +1889,7 @@ Web検索がうまくいきませんでした。
   width:
     min(
       94vw,
-      560px
+      620px
     );
 
   padding:
@@ -2040,7 +1915,7 @@ Web検索がうまくいきませんでした。
       10,
       5,
       3,
-      .72
+      .82
     );
 
   box-shadow:
@@ -2065,7 +1940,7 @@ Web検索がうまくいきませんでした。
     8px;
 
   font-size:
-    25px;
+    26px;
 
   font-weight:
     bold;
@@ -2114,10 +1989,142 @@ Web検索がうまくいきませんでした。
 }
 
 
+/* =========================
+   けい＋バックバー
+   ========================= */
+
 .kei-area {
+
+  position:
+    relative;
+
+  min-height:
+    430px;
 
   margin-bottom:
     24px;
+
+  display:
+    flex;
+
+  align-items:
+    flex-end;
+
+  justify-content:
+    center;
+
+  overflow:
+    hidden;
+
+  border-radius:
+    18px;
+
+  background:
+    #1a120f;
+
+  box-shadow:
+    inset
+    0
+    0
+    40px
+    rgba(
+      0,
+      0,
+      0,
+      .35
+    );
+}
+
+
+.kei-area__bg {
+
+  position:
+    absolute;
+
+  inset:
+    0;
+
+  background-image:
+    url('/backbar.jpg');
+
+  background-size:
+    cover;
+
+  background-position:
+    center;
+
+  transform:
+    scale(1.03);
+
+  filter:
+    saturate(.92)
+    brightness(.88);
+}
+
+
+.kei-area__overlay {
+
+  position:
+    absolute;
+
+  inset:
+    0;
+
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(
+        20,
+        10,
+        5,
+        .10
+      ) 0%,
+
+      rgba(
+        20,
+        10,
+        5,
+        .15
+      ) 42%,
+
+      rgba(
+        10,
+        5,
+        3,
+        .48
+      ) 100%
+    );
+}
+
+
+.kei-area__inner {
+
+  position:
+    relative;
+
+  z-index:
+    2;
+
+  width:
+    100%;
+
+  min-height:
+    430px;
+
+  display:
+    flex;
+
+  flex-direction:
+    column;
+
+  align-items:
+    center;
+
+  justify-content:
+    flex-end;
+
+  padding:
+    16px 12px 14px;
 }
 
 
@@ -2129,17 +2136,17 @@ Web検索がうまくいきませんでした。
   width:
     min(
       88vw,
-      500px
+      430px
     );
 
   max-height:
-    560px;
+    400px;
 
   height:
     auto;
 
   margin:
-    0 auto 12px;
+    0 auto 8px;
 
   object-fit:
     contain;
@@ -2150,13 +2157,13 @@ Web検索がうまくいきませんでした。
   filter:
     drop-shadow(
       0
-      18px
-      30px
+      15px
+      22px
       rgba(
         0,
         0,
         0,
-        .38
+        .42
       )
     );
 
@@ -2170,19 +2177,42 @@ Web検索がうまくいきませんでした。
 
 .kei-state {
 
+  position:
+    relative;
+
+  z-index:
+    3;
+
   min-height:
     20px;
 
-  font-size:
-    14px;
+  padding:
+    5px 12px;
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(
+      0,
+      0,
+      0,
+      .28
+    );
 
   color:
     rgba(
       255,
       255,
       255,
-      .8
+      .88
     );
+
+  font-size:
+    14px;
+
+  backdrop-filter:
+    blur(5px);
 }
 
 
@@ -2273,6 +2303,10 @@ Web検索がうまくいきませんでした。
 }
 
 
+/* =========================
+   スマホ
+   ========================= */
+
 @media (
   max-width: 640px
 ) {
@@ -2290,7 +2324,34 @@ Web検索がうまくいきませんでした。
       100%;
 
     padding:
-      22px 14px 24px;
+      20px 12px 24px;
+  }
+
+
+  .kei-area {
+
+    min-height:
+      340px;
+
+    border-radius:
+      15px;
+  }
+
+
+  .kei-area__inner {
+
+    min-height:
+      340px;
+
+    padding:
+      12px 8px 12px;
+  }
+
+
+  .kei-area__bg {
+
+    background-position:
+      center center;
   }
 
 
@@ -2298,12 +2359,19 @@ Web検索がうまくいきませんでした。
 
     width:
       min(
-        96vw,
-        460px
+        94vw,
+        330px
       );
 
     max-height:
-      58vh;
+      310px;
+  }
+
+
+  .title {
+
+    font-size:
+      23px;
   }
 }
 
