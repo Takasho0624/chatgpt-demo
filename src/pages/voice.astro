@@ -166,6 +166,24 @@ import Layout from '../layouts/Layout.astro'
   let memory = ''
 
   /*
+   * ログイン中ユーザー
+   */
+  let currentUserId = null
+
+  /*
+   * 1回のVOICE接続ごとのID
+   */
+  let currentVoiceSessionId = null
+
+  /*
+   * 同じ文字起こしイベントを
+   * 二重保存しないためのSet
+   */
+  const savedTranscriptKeys =
+    new Set()
+
+
+  /*
    * 一度でも会話開始したか
    */
   let conversationStarted = false
@@ -287,6 +305,146 @@ import Layout from '../layouts/Layout.astro'
     document.getElementById(
       'kei-avatar'
     )
+
+
+  /*
+   * =========================
+   * VOICEセッションID生成
+   * =========================
+   */
+
+  function createVoiceSessionId() {
+
+    const randomPart =
+      Math.random()
+        .toString(36)
+        .slice(2, 10)
+
+
+    return (
+      `voice_${Date.now()}_${randomPart}`
+    )
+  }
+
+
+  /*
+   * =========================
+   * VOICE全文ログ保存
+   * =========================
+   */
+
+  async function saveVoiceMessage(
+    role,
+    content,
+    uniqueKey = ''
+  ) {
+
+    const cleanContent =
+      typeof content === 'string'
+        ? content.trim()
+        : ''
+
+
+    if (
+      !cleanContent ||
+      !currentUserId ||
+      !currentVoiceSessionId
+    ) {
+
+      return
+    }
+
+
+    /*
+     * 同じ確定イベントが
+     * 複数形式で届いた場合の
+     * 二重保存防止
+     */
+    if (
+      uniqueKey &&
+      savedTranscriptKeys
+        .has(uniqueKey)
+    ) {
+
+      return
+    }
+
+
+    if (uniqueKey) {
+
+      savedTranscriptKeys
+        .add(uniqueKey)
+    }
+
+
+    try {
+
+      const { error } =
+        await supabase
+          .from(
+            'voice_messages'
+          )
+          .insert({
+            user_id:
+              currentUserId,
+
+            session_id:
+              currentVoiceSessionId,
+
+            role,
+
+            content:
+              cleanContent,
+          })
+
+
+      if (error) {
+
+        console.error(
+          'Voice log save error:',
+          error
+        )
+
+
+        /*
+         * 保存失敗時は
+         * 再試行可能にする
+         */
+        if (uniqueKey) {
+
+          savedTranscriptKeys
+            .delete(uniqueKey)
+        }
+
+
+        return
+      }
+
+
+      console.log(
+        'Voice log saved:',
+        role,
+        cleanContent
+      )
+
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        'Voice log save exception:',
+        error
+      )
+
+
+      if (uniqueKey) {
+
+        savedTranscriptKeys
+          .delete(uniqueKey)
+      }
+    }
+  }
 
 
   /*
@@ -785,10 +943,9 @@ import Layout from '../layouts/Layout.astro'
 
 
         /*
-         * 一瞬の無音ではなく
-         * 約12フレーム連続で
-         * 静かになったら
-         * 実際の音声が終わったと判断
+         * 約1.5秒程度
+         * 無音が続いたら
+         * 実際の音声終了と判断
          */
         if (
           silenceFrames > 90
@@ -803,15 +960,10 @@ import Layout from '../layouts/Layout.astro'
 
 
           /*
-           * =========================
-           * 重要
-           *
-           * Realtimeのresponse.doneではなく
-           * 実際の音声が終わった時だけ
+           * response.doneではなく
+           * 実際の音声終了時だけ
            * 「話しかけてね」に戻す
-           * =========================
            */
-
           if (
             wasSpeaking &&
             conversationStarted &&
@@ -961,6 +1113,13 @@ import Layout from '../layouts/Layout.astro'
 
         return
       }
+
+
+      /*
+       * ログ保存用
+       */
+      currentUserId =
+        user.id
 
 
       /*
@@ -1464,6 +1623,20 @@ Web検索がうまくいきませんでした。
     try {
 
       /*
+       * 新しいVOICEセッション
+       */
+      currentVoiceSessionId =
+        createVoiceSessionId()
+
+
+      /*
+       * 前回の重複防止情報を消す
+       */
+      savedTranscriptKeys
+        .clear()
+
+
+      /*
        * 会話開始。
        * 「待ってるよ」はここで消す。
        */
@@ -1772,6 +1945,115 @@ Web検索がうまくいきませんでした。
 
 
               /*
+               * =========================
+               * お客様の文字起こし確定
+               * =========================
+               */
+
+              if (
+                message.type ===
+                'conversation.item.input_audio_transcription.completed'
+              ) {
+
+                const transcript =
+                  typeof message.transcript ===
+                    'string'
+                    ? message.transcript.trim()
+                    : ''
+
+
+                if (transcript) {
+
+                  const itemId =
+                    message.item_id ||
+                    'unknown'
+
+
+                  await saveVoiceMessage(
+                    'user',
+                    transcript,
+                    `user:${itemId}`
+                  )
+                }
+              }
+
+
+              /*
+               * =========================
+               * けいの文字起こし確定
+               *
+               * 現行Realtimeイベント
+               * =========================
+               */
+
+              if (
+                message.type ===
+                'response.output_audio_transcript.done'
+              ) {
+
+                const transcript =
+                  typeof message.transcript ===
+                    'string'
+                    ? message.transcript.trim()
+                    : ''
+
+
+                if (transcript) {
+
+                  const itemId =
+                    message.item_id ||
+                    message.response_id ||
+                    'unknown'
+
+
+                  await saveVoiceMessage(
+                    'assistant',
+                    transcript,
+                    `assistant:${itemId}`
+                  )
+                }
+              }
+
+
+              /*
+               * =========================
+               * 旧形式イベントにも対応
+               *
+               * API側のイベント名差異が
+               * あっても保存できるようにする
+               * =========================
+               */
+
+              if (
+                message.type ===
+                'response.audio_transcript.done'
+              ) {
+
+                const transcript =
+                  typeof message.transcript ===
+                    'string'
+                    ? message.transcript.trim()
+                    : ''
+
+
+                if (transcript) {
+
+                  const itemId =
+                    message.item_id ||
+                    message.response_id ||
+                    'unknown'
+
+
+                  await saveVoiceMessage(
+                    'assistant',
+                    transcript,
+                    `assistant:${itemId}`
+                  )
+                }
+              }
+
+
+              /*
                * お客様が話し始めた
                */
               if (
@@ -1871,13 +2153,11 @@ Web検索がうまくいきませんでした。
                * response.done
                * =========================
                *
-               * 重要：
-               *
                * response.done は
-               * 実際の音声再生が終わるより
+               * 実際の音声再生より
                * 先に来る場合がある。
                *
-               * だからここでは
+               * ここでは
                * 「話しかけてね」に戻さない。
                *
                * 実際の音声波形が
@@ -2193,6 +2473,14 @@ Web検索がうまくいきませんでした。
         .disabled =
           true
     }
+
+
+    /*
+     * 次に話す時は
+     * 新しいsession_idを作る
+     */
+    currentVoiceSessionId =
+      null
   }
 
 
