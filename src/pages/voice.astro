@@ -5,29 +5,73 @@ import Layout from '../layouts/Layout.astro'
 <Layout title="けいのBAR - Voice">
   <main class="voice-page">
 
+    <!-- 上部ナビ -->
+    <div class="voice-topbar">
+
+      <a
+        href="/"
+        class="back-link"
+      >
+        ← テキスト版へ戻る
+      </a>
+
+      <div class="account-area">
+
+        <span
+          id="login-name"
+          class="login-name"
+        >
+          ログイン情報を確認中…
+        </span>
+
+        <button
+          id="logout-button"
+          type="button"
+          class="logout-button"
+        >
+          ログアウト
+        </button>
+
+      </div>
+
+    </div>
+
+
     <section class="bar-card">
 
-      <div class="title">
-        けいのBAR
+      <!-- 呼び名＋状態 -->
+      <div class="voice-meta">
+
+        <span
+          id="customer-name"
+          class="customer-name"
+        >
+          お客様
+        </span>
+
+        <span
+          id="status"
+          class="status"
+        >
+          少し待ってね🍸
+        </span>
+
       </div>
 
-      <div id="customer-name" class="customer-name">
-        お客様情報を確認しています…
-      </div>
 
-      <div id="status" class="status">
-        少し待ってね🍸
-      </div>
-
+      <!-- =========================
+           BARシーン
+           ========================= -->
       <div class="kei-area">
 
-        <!-- 背景 -->
+        <!-- バックバー -->
         <div class="kei-area__bg"></div>
 
-        <!-- 背景を少し暗くする -->
+        <!-- 背景の暗さ調整 -->
         <div class="kei-area__overlay"></div>
 
-        <!-- けい本体 -->
+
+        <!-- けい -->
         <div class="kei-area__inner">
 
           <img
@@ -39,6 +83,7 @@ import Layout from '../layouts/Layout.astro'
 
         </div>
 
+
         <!-- 前景カウンター -->
         <img
           src="/kei-counter-front.png"
@@ -46,12 +91,21 @@ import Layout from '../layouts/Layout.astro'
           class="kei-counter-front"
         />
 
+
         <!-- 状態表示 -->
-        <div id="kei-state" class="kei-state">
-          準備中
+        <div
+          id="kei-state"
+          class="kei-state"
+        >
+          待ってるよ
         </div>
 
       </div>
+
+
+      <!-- =========================
+           ボタン
+           ========================= -->
 
       <button
         id="voice-button"
@@ -85,16 +139,28 @@ import Layout from '../layouts/Layout.astro'
 <script>
   import { supabase } from '../utils/supabase'
 
+
+  /*
+   * =========================
+   * 基本変数
+   * =========================
+   */
+
   let peerConnection = null
   let localStream = null
   let dataChannel = null
 
   let displayName = 'お客様'
+  let loginDisplayName = ''
   let memory = ''
 
+
   /*
+   * =========================
    * リップシンク
+   * =========================
    */
+
   let audioContext = null
   let analyser = null
   let remoteAudioSource = null
@@ -104,20 +170,34 @@ import Layout from '../layouts/Layout.astro'
   let lastMouthChange = 0
   let silenceFrames = 0
 
+
   /*
+   * =========================
    * まばたき
+   * =========================
    */
+
   let blinkTimer = null
   let blinkReturnTimer = null
   let isKeiSpeaking = false
   let isBlinking = false
 
+
   /*
+   * =========================
    * Web検索
+   * =========================
    */
+
   const handledToolCalls =
     new Set()
 
+
+  /*
+   * =========================
+   * 画像
+   * =========================
+   */
 
   const CLOSED_SRC =
     '/kei-mouth-close.png'
@@ -132,6 +212,12 @@ import Layout from '../layouts/Layout.astro'
     '/kei-eyes-close.png'
 
 
+  /*
+   * =========================
+   * DOM
+   * =========================
+   */
+
   const voiceButton =
     document.getElementById(
       'voice-button'
@@ -140,6 +226,11 @@ import Layout from '../layouts/Layout.astro'
   const stopButton =
     document.getElementById(
       'stop-button'
+    )
+
+  const logoutButton =
+    document.getElementById(
+      'logout-button'
     )
 
   const status =
@@ -157,6 +248,11 @@ import Layout from '../layouts/Layout.astro'
       'customer-name'
     )
 
+  const loginName =
+    document.getElementById(
+      'login-name'
+    )
+
   const remoteAudio =
     document.getElementById(
       'remote-audio'
@@ -169,8 +265,11 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * キャラ画像を先読み
+   * =========================
+   * 画像先読み
+   * =========================
    */
+
   function preloadAvatarImages() {
 
     [
@@ -190,23 +289,30 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * 口の状態変更
+   * =========================
+   * 口
+   * =========================
    */
+
   function setMouth(type) {
 
     if (!keiAvatar) {
       return
     }
 
+
     if (isBlinking) {
       return
     }
 
+
     if (
       currentMouth === type
     ) {
+
       return
     }
+
 
     currentMouth =
       type
@@ -241,8 +347,11 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * まばたき予約
+   * =========================
+   * まばたき
+   * =========================
    */
+
   function scheduleBlink() {
 
     if (
@@ -283,9 +392,6 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
-  /*
-   * 1回まばたき
-   */
   function blinkOnce() {
 
     if (
@@ -342,9 +448,6 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
-  /*
-   * まばたき停止
-   */
   function stopBlinking() {
 
     if (
@@ -379,8 +482,11 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
+   * =========================
    * リップシンク停止
+   * =========================
    */
+
   function stopRealLipSync() {
 
     if (
@@ -434,8 +540,11 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
+   * =========================
    * 実音声リップシンク
+   * =========================
    */
+
   async function startRealLipSync(
     stream
   ) {
@@ -490,7 +599,7 @@ import Layout from '../layouts/Layout.astro'
 
     if (
       audioContext.state ===
-      'suspended'
+        'suspended'
     ) {
 
       try {
@@ -700,8 +809,11 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * ユーザー情報取得
+   * =========================
+   * ユーザー初期化
+   * =========================
    */
+
   async function initializeUser() {
 
     try {
@@ -721,6 +833,21 @@ import Layout from '../layouts/Layout.astro'
 
         return
       }
+
+
+      loginDisplayName =
+        user
+          .user_metadata
+          ?.full_name ||
+
+        user
+          .user_metadata
+          ?.name ||
+
+        user
+          .email ||
+
+        'ログイン中'
 
 
       const {
@@ -799,6 +926,16 @@ import Layout from '../layouts/Layout.astro'
 
 
       if (
+        loginName
+      ) {
+
+        loginName
+          .textContent =
+            `${loginDisplayName}としてログイン中`
+      }
+
+
+      if (
         status
       ) {
 
@@ -862,8 +999,44 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * Web検索
+   * =========================
+   * ログアウト
+   * =========================
    */
+
+  async function logout() {
+
+    try {
+
+      stopVoice()
+
+
+      await supabase
+        .auth
+        .signOut()
+
+
+      window.location.href =
+        '/'
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        'Logout error:',
+        error
+      )
+    }
+  }
+
+
+  /*
+   * =========================
+   * Web検索
+   * =========================
+   */
+
   async function handleWebSearch(
     message
   ) {
@@ -971,7 +1144,7 @@ import Layout from '../layouts/Layout.astro'
     ) {
 
       status.textContent =
-        'Webで調べています…🌐'
+        '調べてるよ…🌐'
     }
 
 
@@ -980,7 +1153,7 @@ import Layout from '../layouts/Layout.astro'
     ) {
 
       keiState.textContent =
-        '🔎'
+        '調べてるよ…'
     }
 
 
@@ -1081,7 +1254,7 @@ URLは読み上げないでください。
       ) {
 
         status.textContent =
-          'けいが確認しています…'
+          'ちょっと待ってね…'
       }
 
 
@@ -1090,7 +1263,7 @@ URLは読み上げないでください。
       ) {
 
         keiState.textContent =
-          '♪'
+          'ちょっと待ってね…'
       }
 
 
@@ -1145,8 +1318,11 @@ Web検索がうまくいきませんでした。
 
 
   /*
+   * =========================
    * 音声開始
+   * =========================
    */
+
   async function startVoice() {
 
     try {
@@ -1358,7 +1534,7 @@ Web検索がうまくいきませんでした。
 
               status
                 .textContent =
-                  'けいにつながりました🎙️'
+                  'つながったよ🎙️'
             }
 
 
@@ -1424,6 +1600,12 @@ Web検索がうまくいきませんでした。
           }
 
 
+      /*
+       * =========================
+       * Realtimeイベント
+       * =========================
+       */
+
       dataChannel
         .onmessage =
           async (
@@ -1438,6 +1620,9 @@ Web検索がうまくいきませんでした。
                 )
 
 
+              /*
+               * お客様が話し始めた
+               */
               if (
                 message.type ===
                 'input_audio_buffer.speech_started'
@@ -1449,7 +1634,7 @@ Web検索がうまくいきませんでした。
 
                   status
                     .textContent =
-                      '聞いてるよ…'
+                      'うんうん…'
                 }
 
 
@@ -1459,11 +1644,14 @@ Web検索がうまくいきませんでした。
 
                   keiState
                     .textContent =
-                      '👂'
+                      'うんうん…'
                 }
               }
 
 
+              /*
+               * お客様が話し終わった
+               */
               if (
                 message.type ===
                 'input_audio_buffer.speech_stopped'
@@ -1475,7 +1663,7 @@ Web検索がうまくいきませんでした。
 
                   status
                     .textContent =
-                      'けいが考えています…'
+                      'ちょっと考えてる…'
                 }
 
 
@@ -1485,11 +1673,14 @@ Web検索がうまくいきませんでした。
 
                   keiState
                     .textContent =
-                      'んー'
+                      'ちょっと考えてる…'
                 }
               }
 
 
+              /*
+               * けいが話している
+               */
               if (
                 message.type ===
                   'response.audio.delta' ||
@@ -1508,7 +1699,7 @@ Web検索がうまくいきませんでした。
 
                   status
                     .textContent =
-                      'けいが話しています'
+                      ''
                 }
 
 
@@ -1518,11 +1709,14 @@ Web検索がうまくいきませんでした。
 
                   keiState
                     .textContent =
-                      '♪'
+                      ''
                 }
               }
 
 
+              /*
+               * Web検索
+               */
               if (
                 message.type ===
                   'response.function_call_arguments.done' &&
@@ -1538,6 +1732,9 @@ Web検索がうまくいきませんでした。
               }
 
 
+              /*
+               * 回答終了
+               */
               if (
                 message.type ===
                 'response.done'
@@ -1579,12 +1776,15 @@ Web検索がうまくいきませんでした。
 
                     keiState
                       .textContent =
-                        '聞いてるよ'
+                        '待ってるよ'
                   }
                 }
               }
 
 
+              /*
+               * エラー
+               */
               if (
                 message.type ===
                 'error'
@@ -1604,6 +1804,16 @@ Web検索がうまくいきませんでした。
                     .textContent =
                       '音声APIでエラーが出ました'
                 }
+
+
+                if (
+                  keiState
+                ) {
+
+                  keiState
+                    .textContent =
+                      'ごめん💦'
+                }
               }
 
 
@@ -1619,6 +1829,9 @@ Web検索がうまくいきませんでした。
           }
 
 
+      /*
+       * SDP
+       */
       const offer =
         await peerConnection
           .createOffer()
@@ -1716,8 +1929,11 @@ Web検索がうまくいきませんでした。
 
 
   /*
+   * =========================
    * 音声終了
+   * =========================
    */
+
   function stopVoice() {
 
     stopRealLipSync()
@@ -1850,6 +2066,12 @@ Web検索がうまくいきませんでした。
   }
 
 
+  /*
+   * =========================
+   * イベント登録
+   * =========================
+   */
+
   voiceButton
     ?.addEventListener(
       'click',
@@ -1864,6 +2086,13 @@ Web検索がうまくいきませんでした。
     )
 
 
+  logoutButton
+    ?.addEventListener(
+      'click',
+      logout
+    )
+
+
   window
     .addEventListener(
       'beforeunload',
@@ -1874,6 +2103,12 @@ Web検索がうまくいきませんでした。
     )
 
 
+  /*
+   * =========================
+   * 起動
+   * =========================
+   */
+
   preloadAvatarImages()
 
   initializeUser()
@@ -1881,6 +2116,10 @@ Web検索がうまくいきませんでした。
 
 
 <style>
+
+/* =========================
+   ページ全体
+   ========================= */
 
 .voice-page {
 
@@ -1890,14 +2129,17 @@ Web検索がうまくいきませんでした。
   display:
     flex;
 
+  flex-direction:
+    column;
+
   align-items:
     center;
 
   justify-content:
-    center;
+    flex-start;
 
   padding:
-    20px;
+    18px 20px 30px;
 
   background:
     radial-gradient(
@@ -1911,6 +2153,182 @@ Web検索がうまくいきませんでした。
 }
 
 
+/* =========================
+   上部ナビ
+   ========================= */
+
+.voice-topbar {
+
+  width:
+    min(
+      94vw,
+      620px
+    );
+
+  min-height:
+    42px;
+
+  margin-bottom:
+    10px;
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    space-between;
+
+  gap:
+    14px;
+
+  font-size:
+    13px;
+}
+
+
+.back-link {
+
+  display:
+    inline-flex;
+
+  align-items:
+    center;
+
+  min-height:
+    34px;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .82
+    );
+
+  text-decoration:
+    none;
+
+  white-space:
+    nowrap;
+
+  transition:
+    opacity .15s ease;
+}
+
+
+.back-link:hover {
+
+  opacity:
+    .72;
+}
+
+
+.account-area {
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    flex-end;
+
+  gap:
+    10px;
+
+  min-width:
+    0;
+}
+
+
+.login-name {
+
+  overflow:
+    hidden;
+
+  text-overflow:
+    ellipsis;
+
+  white-space:
+    nowrap;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .55
+    );
+}
+
+
+.logout-button {
+
+  flex:
+    0 0 auto;
+
+  padding:
+    6px 10px;
+
+  border:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      .18
+    );
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      .06
+    );
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .84
+    );
+
+  font-size:
+    12px;
+
+  cursor:
+    pointer;
+
+  transition:
+    background .15s ease,
+    opacity .15s ease;
+}
+
+
+.logout-button:hover {
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      .12
+    );
+}
+
+
+/* =========================
+   メインカード
+   ========================= */
+
 .bar-card {
 
   width:
@@ -1920,7 +2338,7 @@ Web検索がうまくいきませんでした。
     );
 
   padding:
-    28px 24px 32px;
+    22px 24px 32px;
 
   text-align:
     center;
@@ -1961,47 +2379,29 @@ Web検索がうまくいきませんでした。
 }
 
 
-.title {
+/* =========================
+   名前＋状態
+   ========================= */
 
-  margin-bottom:
-    8px;
+.voice-meta {
 
-  font-size:
-    26px;
+  display:
+    flex;
 
-  font-weight:
-    bold;
+  align-items:
+    center;
 
-  letter-spacing:
-    .06em;
-}
+  justify-content:
+    center;
 
-
-.customer-name {
-
-  margin-bottom:
+  gap:
     12px;
 
-  font-size:
-    13px;
-
-  color:
-    rgba(
-      255,
-      255,
-      255,
-      .58
-    );
-}
-
-
-.status {
-
   min-height:
-    24px;
+    26px;
 
   margin-bottom:
-    16px;
+    14px;
 
   font-size:
     14px;
@@ -2016,8 +2416,35 @@ Web検索がうまくいきませんでした。
 }
 
 
+.customer-name {
+
+  font-weight:
+    600;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .90
+    );
+}
+
+
+.status {
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .72
+    );
+}
+
+
 /* =========================
-   バー背景
+   BARエリア
    ========================= */
 
 .kei-area {
@@ -2094,7 +2521,7 @@ Web検索がうまくいきませんでした。
 }
 
 
-/* 暗さ調整 */
+/* 背景調整 */
 
 .kei-area__overlay {
 
@@ -2110,6 +2537,7 @@ Web検索がうまくいきませんでした。
   background:
     linear-gradient(
       to bottom,
+
       rgba(
         20,
         10,
@@ -2195,10 +2623,6 @@ Web検索がうまくいきませんでした。
   object-position:
     center bottom;
 
-  /*
-   * 少し下げて
-   * カウンター内側にいるようにする
-   */
   transform:
     translateY(25px);
 
@@ -2330,7 +2754,7 @@ Web検索がうまくいきませんでした。
 
 
 /* =========================
-   ボタン
+   音声ボタン
    ========================= */
 
 .voice-button,
@@ -2431,7 +2855,59 @@ Web検索がうまくいきませんでした。
   .voice-page {
 
     padding:
+      10px 8px 24px;
+  }
+
+
+  .voice-topbar {
+
+    width:
+      100%;
+
+    padding:
+      0 4px;
+
+    margin-bottom:
       8px;
+
+    flex-direction:
+      column;
+
+    align-items:
+      stretch;
+
+    gap:
+      6px;
+  }
+
+
+  .back-link {
+
+    justify-content:
+      center;
+
+    min-height:
+      30px;
+  }
+
+
+  .account-area {
+
+    justify-content:
+      center;
+
+    flex-wrap:
+      wrap;
+  }
+
+
+  .login-name {
+
+    max-width:
+      72vw;
+
+    text-align:
+      center;
   }
 
 
@@ -2441,7 +2917,23 @@ Web検索がうまくいきませんでした。
       100%;
 
     padding:
-      20px 12px 24px;
+      18px 12px 24px;
+  }
+
+
+  .voice-meta {
+
+    gap:
+      9px;
+
+    margin-bottom:
+      12px;
+
+    font-size:
+      13px;
+
+    flex-wrap:
+      wrap;
   }
 
 
@@ -2505,13 +2997,6 @@ Web検索がうまくいきませんでした。
 
     padding:
       4px 10px;
-  }
-
-
-  .title {
-
-    font-size:
-      23px;
   }
 }
 
