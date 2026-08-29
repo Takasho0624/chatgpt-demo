@@ -10,7 +10,7 @@ import '../message.css'
 
 export default () => {
   let inputRef: HTMLTextAreaElement
-  
+
   const [currentSystemRoleSettings, setCurrentSystemRoleSettings] = createSignal('')
   const [systemRoleEditing, setSystemRoleEditing] = createSignal(false)
 
@@ -92,7 +92,7 @@ export default () => {
   }
 
   // -------------------------
-  // メッセージをSupabaseへ保存
+  // メッセージ保存
   // -------------------------
 
   const saveMessage = async(
@@ -124,7 +124,7 @@ export default () => {
   }
 
   // -------------------------
-  // 呼び名をプロフィールへ保存
+  // 呼び名保存
   // -------------------------
 
   const saveProfileName = async(name: string) => {
@@ -171,7 +171,8 @@ export default () => {
   }
 
   // -------------------------
-  // 呼び名の初回設定・途中変更
+  // 初回の呼び名設定
+  // ＋途中での呼び名変更
   // -------------------------
 
   const updateNamePreference = async(content: string) => {
@@ -182,8 +183,7 @@ export default () => {
 
     let detectedName = ''
 
-    // すでに呼び名が確定している場合は、
-    // 明示的な変更指示だけを拾う
+    // すでに呼び名が決まっている場合
     if (nameConfirmed()) {
       const renamePatterns = [
         /(?:これからは|今後は|今度から|次から|やっぱり)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:って呼んで|ってよんで|と呼んで|とよんで|で呼んで|でよんで)/,
@@ -207,7 +207,7 @@ export default () => {
       return await saveProfileName(detectedName)
     }
 
-    // 初回。「今のGoogle名でいい」という返答
+    // 初回：Googleアカウント名のままでOK
     const keepCurrentPatterns = [
       /そのままで/,
       /その名前で/,
@@ -220,7 +220,7 @@ export default () => {
     if (keepCurrentPatterns.some(pattern => pattern.test(text)))
       detectedName = profileName()
 
-    // 初回。別の呼び名を指定
+    // 初回：別の呼び名を指定
     if (!detectedName) {
       const firstNamePatterns = [
         /(?:私の名前は|名前は|僕は|ぼくは|私は|わたしは)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:です|だよ|だ|といいます|と言います)/,
@@ -238,8 +238,7 @@ export default () => {
       }
     }
 
-    // 初回確認直後の
-    // 「テスト太郎」「テスト太郎で」なども拾う
+    // 「たろちゃんで」など短い返答
     if (!detectedName && text.length <= 30) {
       const candidate = text
         .replace(/^(じゃあ|では|えっと|うん|はい)[、,\s]*/g, '')
@@ -265,7 +264,7 @@ export default () => {
   }
 
   // -------------------------
-  // 長期記憶をSupabaseへ保存
+  // 長期記憶保存
   // -------------------------
 
   const saveMemory = async(memory: string) => {
@@ -305,26 +304,21 @@ export default () => {
   }
 
   // -------------------------
-  // 長期記憶をAIで更新
+  // 長期記憶の自動更新
   // -------------------------
 
   const updateLongTermMemory = async(
     latestUserMessage: string,
-    latestAssistantMessage: string,
   ) => {
     try {
       if (!latestUserMessage)
         return
 
-      const recentMessages = [
-        ...messageList()
-          .filter((message, index) => index !== 0)
-          .slice(-6),
-        {
-          role: 'assistant',
-          content: latestAssistantMessage,
-        },
-      ]
+      // 現在の会話の直近分だけを
+      // 記憶整理AIに渡す
+      const recentMessages = messageList()
+        .filter((message, index) => index !== 0)
+        .slice(-6)
 
       const timestamp = Date.now()
 
@@ -359,16 +353,19 @@ export default () => {
         await saveMemory(data.memory)
     }
     catch (err) {
-      console.error('Failed to update long-term memory:', err)
+      console.error(
+        'Failed to update long-term memory:',
+        err,
+      )
     }
   }
 
   // -------------------------
-  // 既存ログから初回の長期記憶を作る
+  // 既存ユーザー用
+  // 過去ログから最初のmemoryを一度だけ作る
   // -------------------------
 
   const bootstrapMemoryFromOldMessages = async() => {
-    // すでに長期記憶があるなら何もしない
     if (profileMemory())
       return
 
@@ -380,7 +377,6 @@ export default () => {
       if (!user)
         return
 
-      // 最初の移行時だけ、最近の保存済みログを読む
       const { data: oldMessages, error } = await supabase
         .from('messages')
         .select('role, content, created_at')
@@ -389,7 +385,10 @@ export default () => {
         .limit(20)
 
       if (error) {
-        console.error('Failed to load old messages:', error)
+        console.error(
+          'Failed to load old messages:',
+          error,
+        )
         return
       }
 
@@ -444,7 +443,10 @@ export default () => {
         await saveMemory(data.memory)
     }
     catch (err) {
-      console.error('Failed to bootstrap memory:', err)
+      console.error(
+        'Failed to bootstrap memory:',
+        err,
+      )
     }
   }
 
@@ -461,20 +463,29 @@ export default () => {
       if (!user)
         return
 
-      const { data: profile, error: profileError } = await supabase
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
         .from('profiles')
-        .select('display_name, memory, name_confirmed')
+        .select(
+          'display_name, memory, name_confirmed',
+        )
         .eq('user_id', user.id)
         .maybeSingle()
 
-      if (profileError)
-        console.error('Failed to load profile:', profileError)
+      if (profileError) {
+        console.error(
+          'Failed to load profile:',
+          profileError,
+        )
+      }
 
       let displayName = profile?.display_name || ''
       let confirmed = profile?.name_confirmed || false
       const memory = profile?.memory || ''
 
-      // 初回はGoogleアカウント名を仮名として保存
+      // 初回ユーザー
       if (!displayName) {
         displayName
           = user.user_metadata?.full_name
@@ -492,8 +503,12 @@ export default () => {
             updated_at: new Date().toISOString(),
           })
 
-        if (error)
-          console.error('Failed to create profile:', error)
+        if (error) {
+          console.error(
+            'Failed to create profile:',
+            error,
+          )
+        }
 
         confirmed = false
       }
@@ -502,8 +517,8 @@ export default () => {
       setNameConfirmed(confirmed)
       setProfileMemory(memory)
 
-      // 既存ユーザーでmemoryがまだ空なら、
-      // 過去ログから一度だけ長期記憶を作る
+      // 既存ログがあるのにmemoryが空なら
+      // 最初の一度だけ記憶を生成
       if (!memory)
         await bootstrapMemoryFromOldMessages()
 
@@ -513,7 +528,8 @@ export default () => {
 
       if (confirmed) {
         openingMessage
-          = `${greeting}、${formatDisplayName(displayName)}🍸\n今夜もゆっくりしていってね。`
+          = `${greeting}、${formatDisplayName(displayName)}🍸\n`
+          + '今夜もゆっくりしていってね。'
       }
       else {
         openingMessage
@@ -522,7 +538,7 @@ export default () => {
           + 'それとも、ニックネームや別の呼び名がありますか？'
       }
 
-      // 過去ログは表示しない
+      // 過去ログは画面に表示しない
       setMessageList([
         {
           role: 'assistant',
@@ -531,7 +547,10 @@ export default () => {
       ])
     }
     catch (err) {
-      console.error('Failed to initialize user:', err)
+      console.error(
+        'Failed to initialize user:',
+        err,
+      )
     }
   }
 
@@ -552,14 +571,25 @@ export default () => {
     })
 
     try {
-      if (sessionStorage.getItem('systemRoleSettings')) {
+      if (
+        sessionStorage.getItem(
+          'systemRoleSettings',
+        )
+      ) {
         setCurrentSystemRoleSettings(
-          sessionStorage.getItem('systemRoleSettings') || '',
+          sessionStorage.getItem(
+            'systemRoleSettings',
+          ) || '',
         )
       }
 
-      if (localStorage.getItem('stickToBottom') === 'stick')
+      if (
+        localStorage.getItem(
+          'stickToBottom',
+        ) === 'stick'
+      ) {
         setStick(true)
+      }
     }
     catch (err) {
       console.error(err)
@@ -567,10 +597,16 @@ export default () => {
 
     await initializeUser()
 
-    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener(
+      'beforeunload',
+      handleBeforeUnload,
+    )
 
     onCleanup(() => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener(
+        'beforeunload',
+        handleBeforeUnload,
+      )
     })
   })
 
@@ -580,10 +616,17 @@ export default () => {
       currentSystemRoleSettings(),
     )
 
-    if (isStick())
-      localStorage.setItem('stickToBottom', 'stick')
-    else
-      localStorage.removeItem('stickToBottom')
+    if (isStick()) {
+      localStorage.setItem(
+        'stickToBottom',
+        'stick',
+      )
+    }
+    else {
+      localStorage.removeItem(
+        'stickToBottom',
+      )
+    }
   }
 
   // -------------------------
@@ -607,22 +650,34 @@ export default () => {
       },
     ])
 
-    await saveMessage('user', inputValue)
+    await saveMessage(
+      'user',
+      inputValue,
+    )
 
-    // 初回でも途中でも呼び名変更を確認
-    await updateNamePreference(inputValue)
+    // 初回・途中変更どちらも対応
+    await updateNamePreference(
+      inputValue,
+    )
 
-    await requestWithLatestMessage(inputValue)
+    await requestWithLatestMessage(
+      inputValue,
+    )
 
     instantToBottom()
   }
 
-  const smoothToBottom = useThrottleFn(() => {
-    window.scrollTo({
-      top: document.body.scrollHeight,
-      behavior: 'smooth',
-    })
-  }, 300, false, true)
+  const smoothToBottom = useThrottleFn(
+    () => {
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: 'smooth',
+      })
+    },
+    300,
+    false,
+    true,
+  )
 
   const instantToBottom = () => {
     window.scrollTo({
@@ -632,7 +687,7 @@ export default () => {
   }
 
   // -------------------------
-  // AIへ会話リクエスト
+  // 通常のAI会話
   // -------------------------
 
   const requestWithLatestMessage = async(
@@ -642,17 +697,26 @@ export default () => {
     setCurrentAssistantMessage('')
     setCurrentError(null)
 
-    const storagePassword = localStorage.getItem('pass')
+    const storagePassword
+      = localStorage.getItem('pass')
 
     try {
-      const controller = new AbortController()
+      const controller
+        = new AbortController()
+
       setController(controller)
 
-      // 今回の画面で交わしている会話だけ。
-      // 過去ログそのものは送らない。
-      const currentConversation = messageList()
-        .filter((message, index) => index !== 0)
-        .slice(-maxHistoryMessages)
+      // 今回の画面で交わした会話だけ
+      // 過去ログは直接AIへ送らない
+      const currentConversation
+        = messageList()
+          .filter(
+            (message, index) =>
+              index !== 0,
+          )
+          .slice(
+            -maxHistoryMessages,
+          )
 
       const requestMessageList = [
         ...currentConversation,
@@ -660,20 +724,25 @@ export default () => {
 
       let profileContext = ''
 
-      // 現在の呼び名を伝える
-      if (nameConfirmed() && profileName()) {
+      if (
+        nameConfirmed()
+        && profileName()
+      ) {
         profileContext +=
           `このユーザーの現在の希望する呼び名は「${formatDisplayName(profileName())}」。`
-          + '以前の情報に別の呼び名があっても、現在の呼び名を優先してください。'
+          + '必ずこの呼び名を優先してください。'
+          + '以前の情報に別の呼び名があっても、現在の呼び名を使ってください。'
       }
 
-      // 長期記憶を伝える
       if (profileMemory()) {
         profileContext +=
-          `\n\nこのユーザーについて長期的に記憶していること:\n${profileMemory()}`
+          '\n\nこのユーザーについて長期的に記憶していること:\n'
+          + profileMemory()
       }
 
-      if (currentSystemRoleSettings()) {
+      if (
+        currentSystemRoleSettings()
+      ) {
         profileContext +=
           `\n\n${currentSystemRoleSettings()}`
       }
@@ -687,28 +756,43 @@ export default () => {
 
       const timestamp = Date.now()
 
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        body: JSON.stringify({
-          messages: requestMessageList,
-          time: timestamp,
-          pass: storagePassword,
-          sign: await generateSignature({
-            t: timestamp,
-            m: latestUserMessage,
+      const response = await fetch(
+        '/api/generate',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            messages:
+              requestMessageList,
+            time: timestamp,
+            pass: storagePassword,
+            sign:
+              await generateSignature({
+                t: timestamp,
+                m: latestUserMessage,
+              }),
+            temperature:
+              temperature(),
           }),
-          temperature: temperature(),
-        }),
-        signal: controller.signal,
-      })
+          signal:
+            controller.signal,
+        },
+      )
 
       if (!response.ok) {
-        const error = await response.json()
+        const error
+          = await response.json()
 
-        console.error(error.error)
-        setCurrentError(error.error)
+        console.error(
+          error.error,
+        )
 
-        throw new Error('Request failed')
+        setCurrentError(
+          error.error,
+        )
+
+        throw new Error(
+          'Request failed',
+        )
       }
 
       const data = response.body
@@ -716,8 +800,11 @@ export default () => {
       if (!data)
         throw new Error('No data')
 
-      const reader = data.getReader()
-      const decoder = new TextDecoder('utf-8')
+      const reader
+        = data.getReader()
+
+      const decoder
+        = new TextDecoder('utf-8')
 
       let done = false
 
@@ -728,17 +815,21 @@ export default () => {
         } = await reader.read()
 
         if (value) {
-          const char = decoder.decode(value)
+          const char
+            = decoder.decode(value)
 
           if (
             char === '\n'
-            && currentAssistantMessage().endsWith('\n')
-          )
+            && currentAssistantMessage()
+              .endsWith('\n')
+          ) {
             continue
+          }
 
           if (char) {
             setCurrentAssistantMessage(
-              currentAssistantMessage() + char,
+              currentAssistantMessage()
+              + char,
             )
           }
 
@@ -758,7 +849,9 @@ export default () => {
       return
     }
 
-    await archiveCurrentMessage(latestUserMessage)
+    await archiveCurrentMessage(
+      latestUserMessage,
+    )
 
     if (isStick())
       instantToBottom()
@@ -766,16 +859,23 @@ export default () => {
 
   // -------------------------
   // AI返答確定
+  // 二重表示対策済み
   // -------------------------
 
   const archiveCurrentMessage = async(
     latestUserMessage: string,
   ) => {
-    const assistantMessage = currentAssistantMessage()
+    const assistantMessage
+      = currentAssistantMessage()
 
     if (!assistantMessage)
       return
 
+    // ★ここが二重表示対策
+    // ストリーミング表示を先に消す
+    setCurrentAssistantMessage('')
+
+    // 完成した返答を正式に表示
     setMessageList([
       ...messageList(),
       {
@@ -784,24 +884,23 @@ export default () => {
       },
     ])
 
+    // ここから先は裏側の保存処理
     await saveMessage(
       'assistant',
       assistantMessage,
     )
 
-    // 会話が1往復終わるたび、
-    // 長期記憶を静かに更新
+    // 長期記憶を更新
     await updateLongTermMemory(
       latestUserMessage,
-      assistantMessage,
     )
 
-    setCurrentAssistantMessage('')
     setLoading(false)
     setController(null)
 
     if (!(
-      'ontouchstart' in document.documentElement
+      'ontouchstart'
+        in document.documentElement
       || navigator.maxTouchPoints > 0
     )) {
       inputRef.focus()
@@ -810,7 +909,9 @@ export default () => {
 
   // -------------------------
   // この会話をリセット
-  // 名前・長期記憶・保存ログは消さない
+  //
+  // 画面上の会話だけ消す。
+  // 名前・記憶・DBログは残す。
   // -------------------------
 
   const clear = () => {
@@ -820,11 +921,15 @@ export default () => {
     setCurrentAssistantMessage('')
     setCurrentError(null)
 
-    const greeting = getJapaneseGreeting()
+    const greeting
+      = getJapaneseGreeting()
 
-    const openingMessage = nameConfirmed() && profileName()
-      ? `${greeting}、${formatDisplayName(profileName())}🍸\nさて、今夜は何のお話をしましょう？`
-      : `${greeting}🍸`
+    const openingMessage
+      = nameConfirmed()
+        && profileName()
+        ? `${greeting}、${formatDisplayName(profileName())}🍸\n`
+          + 'さて、今夜は何のお話をしましょう？'
+        : `${greeting}🍸`
 
     setMessageList([
       {
@@ -834,40 +939,84 @@ export default () => {
     ])
   }
 
+  // -------------------------
+  // ストリーム停止
+  // -------------------------
+
   const stopStreamFetch = () => {
     if (controller()) {
       controller().abort()
 
-      const latestUserMessage = [...messageList()]
-        .reverse()
-        .find(message => message.role === 'user')
-        ?.content || ''
+      const latestUserMessage
+        = [...messageList()]
+          .reverse()
+          .find(
+            message =>
+              message.role === 'user',
+          )
+          ?.content || ''
 
-      archiveCurrentMessage(latestUserMessage)
+      archiveCurrentMessage(
+        latestUserMessage,
+      )
     }
   }
+
+  // -------------------------
+  // 再生成
+  // -------------------------
 
   const retryLastFetch = () => {
-    if (messageList().length > 0) {
+    if (
+      messageList().length > 0
+    ) {
       const lastMessage
-        = messageList()[messageList().length - 1]
+        = messageList()[
+          messageList().length - 1
+        ]
 
-      if (lastMessage.role === 'assistant')
-        setMessageList(messageList().slice(0, -1))
+      if (
+        lastMessage.role
+        === 'assistant'
+      ) {
+        setMessageList(
+          messageList().slice(
+            0,
+            -1,
+          ),
+        )
+      }
 
-      const latestUserMessage = [...messageList()]
-        .reverse()
-        .find(message => message.role === 'user')
-        ?.content || ''
+      const latestUserMessage
+        = [...messageList()]
+          .reverse()
+          .find(
+            message =>
+              message.role === 'user',
+          )
+          ?.content || ''
 
-      if (latestUserMessage)
-        requestWithLatestMessage(latestUserMessage)
+      if (latestUserMessage) {
+        requestWithLatestMessage(
+          latestUserMessage,
+        )
+      }
     }
   }
 
-  const handleKeydown = (e: KeyboardEvent) => {
-    if (e.isComposing || e.shiftKey)
+  // -------------------------
+  // Enter送信
+  // -------------------------
+
+  const handleKeydown = (
+    e: KeyboardEvent,
+  ) => {
+    if (
+      e.isComposing
+      || e.shiftKey
+    ) {
       return
+    }
 
     if (e.key === 'Enter') {
       e.preventDefault()
@@ -875,46 +1024,80 @@ export default () => {
     }
   }
 
+  // -------------------------
+  // 画面
+  // -------------------------
+
   return (
     <div my-6>
       <SystemRoleSettings
-        canEdit={() => messageList().length <= 1}
-        systemRoleEditing={systemRoleEditing}
-        setSystemRoleEditing={setSystemRoleEditing}
-        currentSystemRoleSettings={currentSystemRoleSettings}
-        setCurrentSystemRoleSettings={setCurrentSystemRoleSettings}
-        temperatureSetting={temperatureSetting}
+        canEdit={() =>
+          messageList().length <= 1
+        }
+        systemRoleEditing={
+          systemRoleEditing
+        }
+        setSystemRoleEditing={
+          setSystemRoleEditing
+        }
+        currentSystemRoleSettings={
+          currentSystemRoleSettings
+        }
+        setCurrentSystemRoleSettings={
+          setCurrentSystemRoleSettings
+        }
+        temperatureSetting={
+          temperatureSetting
+        }
       />
 
       <Index each={messageList()}>
         {(message, index) => (
           <MessageItem
-            role={message().role}
-            message={message().content}
+            role={
+              message().role
+            }
+            message={
+              message().content
+            }
             showRetry={() =>
               (
-                message().role === 'assistant'
-                && index === messageList().length - 1
+                message().role
+                  === 'assistant'
+                && index
+                  === messageList()
+                    .length - 1
               )
             }
-            onRetry={retryLastFetch}
+            onRetry={
+              retryLastFetch
+            }
           />
         )}
       </Index>
 
-      {currentAssistantMessage() && (
-        <MessageItem
-          role="assistant"
-          message={currentAssistantMessage}
-        />
-      )}
+      {
+        currentAssistantMessage()
+        && (
+          <MessageItem
+            role="assistant"
+            message={
+              currentAssistantMessage
+            }
+          />
+        )
+      }
 
       {
         currentError()
         && (
           <ErrorMessageItem
-            data={currentError()}
-            onRetry={retryLastFetch}
+            data={
+              currentError()
+            }
+            onRetry={
+              retryLastFetch
+            }
           />
         )
       }
@@ -923,11 +1106,15 @@ export default () => {
         when={!loading()}
         fallback={() => (
           <div class="gen-cb-wrapper">
-            <span>AI is thinking...</span>
+            <span>
+              AI is thinking...
+            </span>
 
             <div
               class="gen-cb-stop"
-              onClick={stopStreamFetch}
+              onClick={
+                stopStreamFetch
+              }
             >
               Stop
             </div>
@@ -936,17 +1123,25 @@ export default () => {
       >
         <div
           class="gen-text-wrapper flex-col sm:flex-row"
-          class:op-50={systemRoleEditing()}
+          class:op-50={
+            systemRoleEditing()
+          }
         >
           <textarea
             ref={inputRef!}
-            disabled={systemRoleEditing()}
-            onKeyDown={handleKeydown}
+            disabled={
+              systemRoleEditing()
+            }
+            onKeyDown={
+              handleKeydown
+            }
             placeholder="Enter something..."
             autocomplete="off"
             autofocus
             onInput={() => {
-              inputRef.style.height = 'auto'
+              inputRef.style.height
+                = 'auto'
+
               inputRef.style.height
                 = `${inputRef.scrollHeight}px`
             }}
@@ -955,8 +1150,12 @@ export default () => {
           />
 
           <button
-            onClick={handleButtonClick}
-            disabled={systemRoleEditing()}
+            onClick={
+              handleButtonClick
+            }
+            disabled={
+              systemRoleEditing()
+            }
             gen-slate-btn
             class="flex-shrink-0"
           >
@@ -966,7 +1165,9 @@ export default () => {
           <button
             title="この会話をリセット"
             onClick={clear}
-            disabled={systemRoleEditing()}
+            disabled={
+              systemRoleEditing()
+            }
             gen-slate-btn
             class="flex-shrink-0"
           >
@@ -977,14 +1178,20 @@ export default () => {
 
       <div
         class="fixed bottom-5 left-5 rounded-md hover:bg-slate/10 w-fit h-fit transition-colors active:scale-90"
-        class:stick-btn-on={isStick()}
+        class:stick-btn-on={
+          isStick()
+        }
       >
         <div>
           <button
             class="p-2.5 text-base"
             title="stick to bottom"
             type="button"
-            onClick={() => setStick(!isStick())}
+            onClick={() =>
+              setStick(
+                !isStick(),
+              )
+            }
           >
             <div i-ph-arrow-line-down-bold />
           </button>
