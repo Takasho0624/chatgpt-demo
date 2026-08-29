@@ -10,7 +10,7 @@ import '../message.css'
 
 export default () => {
   let inputRef: HTMLTextAreaElement
-
+  
   const [currentSystemRoleSettings, setCurrentSystemRoleSettings] = createSignal('')
   const [systemRoleEditing, setSystemRoleEditing] = createSignal(false)
 
