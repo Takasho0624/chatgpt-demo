@@ -1,0 +1,469 @@
+---
+import Layout from '../layouts/Layout.astro'
+---
+
+<Layout title="けいのBAR - Voice">
+  <main class="voice-page">
+
+    <section class="bar-card">
+
+      <div class="title">
+        けいのBAR
+      </div>
+
+      <div id="status" class="status">
+        マイクを押してね🍸
+      </div>
+
+      <div class="kei-area">
+
+        <div class="kei-icon">
+          K
+        </div>
+
+        <div id="kei-state" class="kei-state">
+          待ってるよ
+        </div>
+
+      </div>
+
+      <button
+        id="voice-button"
+        class="voice-button"
+        type="button"
+      >
+        🎙️ けいと話す
+      </button>
+
+      <button
+        id="stop-button"
+        class="stop-button"
+        type="button"
+        disabled
+      >
+        会話を終了
+      </button>
+
+      <audio
+        id="remote-audio"
+        autoplay
+      ></audio>
+
+    </section>
+
+  </main>
+</Layout>
+
+<script>
+  let peerConnection = null
+  let localStream = null
+  let dataChannel = null
+
+  const voiceButton = document.getElementById('voice-button')
+  const stopButton = document.getElementById('stop-button')
+  const status = document.getElementById('status')
+  const keiState = document.getElementById('kei-state')
+  const remoteAudio = document.getElementById('remote-audio')
+
+  async function startVoice() {
+    try {
+
+      voiceButton.disabled = true
+
+      status.textContent = '接続しています…'
+      keiState.textContent = 'ちょっと待ってね'
+
+      const tokenResponse = await fetch('/api/realtime', {
+        method: 'POST',
+      })
+
+      if (!tokenResponse.ok) {
+        throw new Error(
+          await tokenResponse.text()
+        )
+      }
+
+      const tokenData =
+        await tokenResponse.json()
+
+      const ephemeralKey =
+        tokenData.value ||
+        tokenData.client_secret?.value ||
+        tokenData.client_secret
+
+      if (!ephemeralKey) {
+        console.error(tokenData)
+        throw new Error(
+          'Realtime token が取得できませんでした'
+        )
+      }
+
+      peerConnection =
+        new RTCPeerConnection()
+
+      remoteAudio.autoplay = true
+
+      peerConnection.ontrack = (event) => {
+        remoteAudio.srcObject =
+          event.streams[0]
+      }
+
+      localStream =
+        await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        })
+
+      localStream
+        .getTracks()
+        .forEach((track) => {
+          peerConnection.addTrack(
+            track,
+            localStream
+          )
+        })
+
+      dataChannel =
+        peerConnection.createDataChannel(
+          'oai-events'
+        )
+
+      dataChannel.onopen = () => {
+
+        status.textContent =
+          '話しかけてね🎙️'
+
+        keiState.textContent =
+          '聞いてるよ'
+
+        stopButton.disabled = false
+
+        dataChannel.send(
+          JSON.stringify({
+            type: 'response.create',
+            response: {
+              instructions:
+                '最初に短く自然に挨拶してください。',
+            },
+          })
+        )
+      }
+
+      dataChannel.onmessage = (event) => {
+
+        try {
+
+          const message =
+            JSON.parse(event.data)
+
+          console.log(
+            'Realtime event:',
+            message
+          )
+
+          if (
+            message.type ===
+            'input_audio_buffer.speech_started'
+          ) {
+            status.textContent =
+              '聞いています…'
+
+            keiState.textContent =
+              'うんうん'
+          }
+
+          if (
+            message.type ===
+            'input_audio_buffer.speech_stopped'
+          ) {
+            status.textContent =
+              'けいが考えています…'
+
+            keiState.textContent =
+              'んー…'
+          }
+
+          if (
+            message.type ===
+            'response.audio.delta'
+          ) {
+            status.textContent =
+              'けいが話しています'
+
+            keiState.textContent =
+              '♪'
+          }
+
+          if (
+            message.type ===
+            'response.done'
+          ) {
+            status.textContent =
+              '話しかけてね🎙️'
+
+            keiState.textContent =
+              '聞いてるよ'
+          }
+
+        } catch (error) {
+          console.error(error)
+        }
+      }
+
+      const offer =
+        await peerConnection.createOffer()
+
+      await peerConnection.setLocalDescription(
+        offer
+      )
+
+      const sdpResponse = await fetch(
+        'https://api.openai.com/v1/realtime/calls',
+        {
+          method: 'POST',
+
+          headers: {
+            Authorization:
+              `Bearer ${ephemeralKey}`,
+
+            'Content-Type':
+              'application/sdp',
+          },
+
+          body:
+            peerConnection
+              .localDescription
+              .sdp,
+        }
+      )
+
+      if (!sdpResponse.ok) {
+        throw new Error(
+          await sdpResponse.text()
+        )
+      }
+
+      const answerSdp =
+        await sdpResponse.text()
+
+      await peerConnection.setRemoteDescription({
+        type: 'answer',
+        sdp: answerSdp,
+      })
+
+    } catch (error) {
+
+      console.error(error)
+
+      status.textContent =
+        '接続できませんでした'
+
+      keiState.textContent =
+        'ごめん💦'
+
+      voiceButton.disabled = false
+
+      stopVoice()
+    }
+  }
+
+  function stopVoice() {
+
+    if (dataChannel) {
+      dataChannel.close()
+      dataChannel = null
+    }
+
+    if (peerConnection) {
+      peerConnection.close()
+      peerConnection = null
+    }
+
+    if (localStream) {
+
+      localStream
+        .getTracks()
+        .forEach((track) =>
+          track.stop()
+        )
+
+      localStream = null
+    }
+
+    status.textContent =
+      'マイクを押してね🍸'
+
+    keiState.textContent =
+      '待ってるよ'
+
+    voiceButton.disabled = false
+    stopButton.disabled = true
+  }
+
+  voiceButton?.addEventListener(
+    'click',
+    startVoice
+  )
+
+  stopButton?.addEventListener(
+    'click',
+    stopVoice
+  )
+
+  window.addEventListener(
+    'beforeunload',
+    stopVoice
+  )
+</script>
+
+<style>
+
+.voice-page {
+  min-height: 100vh;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background:
+    radial-gradient(
+      circle at center,
+      #392116,
+      #120907 70%
+    );
+
+  color: white;
+}
+
+.bar-card {
+  width: min(92vw, 440px);
+
+  padding: 36px 28px;
+
+  text-align: center;
+
+  border:
+    1px solid rgba(255,255,255,.15);
+
+  border-radius: 22px;
+
+  background:
+    rgba(10,5,3,.72);
+
+  box-shadow:
+    0 20px 70px
+    rgba(0,0,0,.45);
+}
+
+.title {
+  margin-bottom: 18px;
+
+  font-size: 25px;
+  font-weight: bold;
+
+  letter-spacing: .06em;
+}
+
+.status {
+  min-height: 24px;
+
+  margin-bottom: 30px;
+
+  font-size: 14px;
+
+  color:
+    rgba(255,255,255,.72);
+}
+
+.kei-area {
+  margin-bottom: 32px;
+}
+
+.kei-icon {
+
+  width: 150px;
+  height: 150px;
+
+  margin:
+    0 auto 14px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  font-size: 56px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #754737,
+      #2e1710
+    );
+
+  box-shadow:
+    0 12px 38px
+    rgba(0,0,0,.45);
+}
+
+.kei-state {
+
+  font-size: 14px;
+
+  color:
+    rgba(255,255,255,.8);
+}
+
+.voice-button,
+.stop-button {
+
+  width: 100%;
+
+  padding: 15px 20px;
+
+  border: none;
+  border-radius: 12px;
+
+  font-size: 16px;
+
+  cursor: pointer;
+}
+
+.voice-button {
+
+  margin-bottom: 12px;
+
+  background: #f6eee7;
+
+  color: #24120d;
+}
+
+.voice-button:hover {
+  opacity: .92;
+}
+
+.voice-button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.stop-button {
+
+  background:
+    rgba(255,255,255,.08);
+
+  color: white;
+
+  border:
+    1px solid
+    rgba(255,255,255,.18);
+}
+
+.stop-button:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+</style>
