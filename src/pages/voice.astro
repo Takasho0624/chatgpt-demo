@@ -21,9 +21,12 @@ import Layout from '../layouts/Layout.astro'
 
       <div class="kei-area">
 
-        <div class="kei-icon">
-          けい
-        </div>
+        <img
+          id="kei-avatar"
+          src="/kei-mouth-close.png"
+          alt="けい"
+          class="kei-avatar"
+        />
 
         <div id="kei-state" class="kei-state">
           準備中
@@ -86,6 +89,34 @@ import Layout from '../layouts/Layout.astro'
 
   const remoteAudio =
     document.getElementById('remote-audio')
+
+  const keiAvatar =
+    document.getElementById('kei-avatar')
+
+
+  function setAvatar(type) {
+    if (!keiAvatar) return
+
+    if (type === 'close') {
+      keiAvatar.src =
+        '/kei-mouth-close.png'
+    }
+
+    if (type === 'small') {
+      keiAvatar.src =
+        '/kei-mouth-open-small.png'
+    }
+
+    if (type === 'open') {
+      keiAvatar.src =
+        '/kei-mouth-open.png'
+    }
+
+    if (type === 'blink') {
+      keiAvatar.src =
+        '/kei-eyes-close.png'
+    }
+  }
 
 
   async function initializeUser() {
@@ -152,6 +183,8 @@ import Layout from '../layouts/Layout.astro'
           '待ってるよ'
       }
 
+      setAvatar('close')
+
       if (voiceButton) {
         voiceButton.disabled = false
       }
@@ -188,14 +221,9 @@ import Layout from '../layouts/Layout.astro'
           'ちょっと待ってね'
       }
 
+      setAvatar('close')
 
-      /*
-       * Realtime用の一時キーを取得
-       *
-       * ここで文字版の
-       * ニックネームと長期記憶を
-       * realtime.ts に渡す
-       */
+
       const tokenResponse =
         await fetch(
           '/api/realtime',
@@ -250,16 +278,10 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      /*
-       * WebRTC接続
-       */
       peerConnection =
         new RTCPeerConnection()
 
 
-      /*
-       * けいの音声を再生
-       */
       if (remoteAudio) {
 
         remoteAudio.autoplay = true
@@ -273,9 +295,6 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      /*
-       * お客様のマイク
-       */
       localStream =
         await navigator.mediaDevices
           .getUserMedia({
@@ -300,10 +319,6 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
-      /*
-       * Realtimeイベント用
-       * DataChannel
-       */
       dataChannel =
         peerConnection
           .createDataChannel(
@@ -327,14 +342,13 @@ import Layout from '../layouts/Layout.astro'
             'いらっしゃいませ'
         }
 
+        setAvatar('small')
+
         if (stopButton) {
           stopButton.disabled = false
         }
 
 
-        /*
-         * けいから先に挨拶
-         */
         dataChannel.send(
           JSON.stringify({
             type:
@@ -364,6 +378,17 @@ import Layout from '../layouts/Layout.astro'
 迎えるような、
 自然で親しみのある挨拶にしてください。
 
+くつろいでもらう意味で声をかける場合は、
+「ゆっくりしていってね」
+という表現を使ってください。
+
+「ゆっくり見ていってね」
+とは言わないでください。
+
+ここは商品を見る店ではなく、
+会話やお酒を楽しみながら
+ゆっくり過ごすバーです。
+
 挨拶のあと、
 軽く一言話しかけてください。
               `.trim(),
@@ -389,9 +414,6 @@ import Layout from '../layouts/Layout.astro'
             )
 
 
-            /*
-             * お客様が話し始めた
-             */
             if (
               message.type ===
               'input_audio_buffer.speech_started'
@@ -406,12 +428,11 @@ import Layout from '../layouts/Layout.astro'
                 keiState.textContent =
                   '👂'
               }
+
+              setAvatar('close')
             }
 
 
-            /*
-             * お客様が話し終わった
-             */
             if (
               message.type ===
               'input_audio_buffer.speech_stopped'
@@ -426,12 +447,11 @@ import Layout from '../layouts/Layout.astro'
                 keiState.textContent =
                   'んー'
               }
+
+              setAvatar('close')
             }
 
 
-            /*
-             * けいが話している
-             */
             if (
               message.type ===
               'response.audio.delta'
@@ -446,12 +466,18 @@ import Layout from '../layouts/Layout.astro'
                 keiState.textContent =
                   '♪'
               }
+
+              const random =
+                Math.random()
+
+              if (random < 0.33) {
+                setAvatar('small')
+              } else {
+                setAvatar('open')
+              }
             }
 
 
-            /*
-             * 返答終了
-             */
             if (
               message.type ===
               'response.done'
@@ -466,12 +492,11 @@ import Layout from '../layouts/Layout.astro'
                 keiState.textContent =
                   '聞いてるよ'
               }
+
+              setAvatar('close')
             }
 
 
-            /*
-             * APIエラー
-             */
             if (
               message.type ===
               'error'
@@ -486,6 +511,8 @@ import Layout from '../layouts/Layout.astro'
                 status.textContent =
                   '音声APIでエラーが出ました'
               }
+
+              setAvatar('close')
             }
 
           } catch (error) {
@@ -498,9 +525,6 @@ import Layout from '../layouts/Layout.astro'
         }
 
 
-      /*
-       * WebRTC Offer
-       */
       const offer =
         await peerConnection
           .createOffer()
@@ -512,9 +536,6 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
-      /*
-       * OpenAIへSDPを送る
-       */
       const sdpResponse =
         await fetch(
           'https://api.openai.com/v1/realtime/calls',
@@ -572,6 +593,8 @@ import Layout from '../layouts/Layout.astro'
           'ごめん💦'
       }
 
+      setAvatar('close')
+
       stopVoice()
     }
   }
@@ -623,6 +646,9 @@ import Layout from '../layouts/Layout.astro'
         '待ってるよ'
     }
 
+    setAvatar('close')
+
+
     if (voiceButton) {
       voiceButton.disabled = false
     }
@@ -653,11 +679,6 @@ import Layout from '../layouts/Layout.astro'
   )
 
 
-  /*
-   * ページを開いたら
-   * まずログイン情報と
-   * profileを取得
-   */
   initializeUser()
 </script>
 
@@ -690,10 +711,10 @@ import Layout from '../layouts/Layout.astro'
 .bar-card {
 
   width:
-    min(92vw, 440px);
+    min(94vw, 560px);
 
   padding:
-    36px 28px;
+    28px 24px 32px;
 
   text-align: center;
 
@@ -727,6 +748,8 @@ import Layout from '../layouts/Layout.astro'
       0,
       .45
     );
+
+  overflow: hidden;
 }
 
 
@@ -749,7 +772,7 @@ import Layout from '../layouts/Layout.astro'
 .customer-name {
 
   margin-bottom:
-    16px;
+    12px;
 
   font-size:
     13px;
@@ -770,7 +793,7 @@ import Layout from '../layouts/Layout.astro'
     24px;
 
   margin-bottom:
-    30px;
+    16px;
 
   font-size:
     14px;
@@ -788,57 +811,56 @@ import Layout from '../layouts/Layout.astro'
 .kei-area {
 
   margin-bottom:
-    32px;
+    24px;
 }
 
 
-.kei-icon {
+.kei-avatar {
+
+  display: block;
 
   width:
-    150px;
+    min(88vw, 500px);
 
-  height:
-    150px;
+  max-height:
+    560px;
+
+  height: auto;
 
   margin:
-    0 auto 14px;
+    0 auto 12px;
 
-  display:
-    flex;
+  object-fit:
+    contain;
 
-  align-items:
-    center;
+  object-position:
+    center bottom;
 
-  justify-content:
-    center;
-
-  border-radius:
-    50%;
-
-  font-size:
-    28px;
-
-  background:
-    linear-gradient(
-      145deg,
-      #754737,
-      #2e1710
+  filter:
+    drop-shadow(
+      0
+      18px
+      30px
+      rgba(
+        0,
+        0,
+        0,
+        .38
+      )
     );
 
-  box-shadow:
-    0
-    12px
-    38px
-    rgba(
-      0,
-      0,
-      0,
-      .45
-    );
+  user-select:
+    none;
+
+  -webkit-user-drag:
+    none;
 }
 
 
 .kei-state {
+
+  min-height:
+    20px;
 
   font-size:
     14px;
@@ -937,6 +959,31 @@ import Layout from '../layouts/Layout.astro'
 
   cursor:
     default;
+}
+
+
+@media (
+  max-width: 640px
+) {
+
+  .voice-page {
+    padding: 8px;
+  }
+
+  .bar-card {
+    width: 100%;
+    padding:
+      22px 14px 24px;
+  }
+
+  .kei-avatar {
+    width:
+      min(96vw, 460px);
+
+    max-height:
+      58vh;
+  }
+
 }
 
 </style>
