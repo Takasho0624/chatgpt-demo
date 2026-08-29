@@ -72,18 +72,24 @@ import Layout from '../layouts/Layout.astro'
   let displayName = 'お客様'
   let memory = ''
 
-  let mouthTimer = null
-  let mouthOpen = false
-  let isAssistantSpeaking = false
+  let audioContext = null
+  let analyser = null
+  let remoteAudioSource = null
+  let lipSyncFrame = null
+
+  let currentMouth = 'close'
+  let lastMouthChange = 0
+  let silenceFrames = 0
+
 
   const CLOSED_SRC =
     '/kei-mouth-close.png'
 
-  const OPEN_SRC =
-    '/kei-mouth-open.png'
-
   const SMALL_OPEN_SRC =
     '/kei-mouth-open-small.png'
+
+  const OPEN_SRC =
+    '/kei-mouth-open.png'
 
 
   const voiceButton =
@@ -108,144 +114,376 @@ import Layout from '../layouts/Layout.astro'
     document.getElementById('kei-avatar')
 
 
-  function setClosedMouth() {
+  function preloadAvatarImages() {
 
-    if (!keiAvatar) return
+    [
+      CLOSED_SRC,
+      SMALL_OPEN_SRC,
+      OPEN_SRC,
+    ].forEach((src) => {
 
-    keiAvatar.src =
-      CLOSED_SRC
+      const image =
+        new Image()
 
-    mouthOpen =
-      false
+      image.src =
+        src
+    })
   }
 
 
-  function setOpenMouth() {
+  function setMouth(type) {
 
     if (!keiAvatar) return
-
-    keiAvatar.src =
-      OPEN_SRC
-
-    mouthOpen =
-      true
-  }
-
-
-  function setSmallOpenMouth() {
-
-    if (!keiAvatar) return
-
-    keiAvatar.src =
-      SMALL_OPEN_SRC
-
-    mouthOpen =
-      true
-  }
-
-
-  function startMouthAnimation() {
 
     if (
-      mouthTimer
+      currentMouth === type
     ) {
-      clearInterval(
-        mouthTimer
-      )
+      return
     }
 
-    /*
-     * 最初に少し口を開ける
-     */
-    setSmallOpenMouth()
+    currentMouth =
+      type
 
 
-    /*
-     * 約180msごとに
-     * 口を開閉
-     */
-    mouthTimer =
-      setInterval(
-        () => {
+    if (
+      type === 'close'
+    ) {
 
-          if (
-            !isAssistantSpeaking
-          ) {
-
-            stopMouthAnimation()
-
-            return
-          }
+      keiAvatar.src =
+        CLOSED_SRC
+    }
 
 
-          if (mouthOpen) {
+    if (
+      type === 'small'
+    ) {
 
-            setClosedMouth()
+      keiAvatar.src =
+        SMALL_OPEN_SRC
+    }
 
-          } else {
 
-            /*
-             * 大口と半開きを
-             * 少しランダムにする
-             */
-            const random =
-              Math.random()
+    if (
+      type === 'open'
+    ) {
 
-            if (
-              random < 0.45
-            ) {
-
-              setSmallOpenMouth()
-
-            } else {
-
-              setOpenMouth()
-            }
-          }
-
-        },
-        180
-      )
+      keiAvatar.src =
+        OPEN_SRC
+    }
   }
 
 
-  function stopMouthAnimation() {
+  function stopRealLipSync() {
 
     if (
-      mouthTimer
+      lipSyncFrame
     ) {
 
-      clearInterval(
-        mouthTimer
+      cancelAnimationFrame(
+        lipSyncFrame
       )
 
-      mouthTimer =
+      lipSyncFrame =
         null
     }
 
-    setClosedMouth()
-  }
-
-
-  function startAssistantSpeaking() {
 
     if (
-      isAssistantSpeaking
-    ) return
+      remoteAudioSource
+    ) {
 
-    isAssistantSpeaking =
-      true
+      try {
+        remoteAudioSource.disconnect()
+      } catch (error) {
+        // ignore
+      }
 
-    startMouthAnimation()
+      remoteAudioSource =
+        null
+    }
+
+
+    analyser =
+      null
+
+    silenceFrames =
+      0
+
+    currentMouth =
+      ''
+
+    setMouth('close')
   }
 
 
-  function stopAssistantSpeaking() {
+  async function startRealLipSync(
+    stream
+  ) {
 
-    isAssistantSpeaking =
-      false
+    if (!stream) return
 
-    stopMouthAnimation()
+
+    /*
+     * 前回の解析が残っていたら停止
+     */
+    if (
+      lipSyncFrame
+    ) {
+
+      cancelAnimationFrame(
+        lipSyncFrame
+      )
+
+      lipSyncFrame =
+        null
+    }
+
+
+    if (
+      remoteAudioSource
+    ) {
+
+      try {
+        remoteAudioSource.disconnect()
+      } catch (error) {
+        // ignore
+      }
+
+      remoteAudioSource =
+        null
+    }
+
+
+    /*
+     * AudioContext
+     */
+    if (
+      !audioContext ||
+      audioContext.state ===
+      'closed'
+    ) {
+
+      audioContext =
+        new AudioContext()
+    }
+
+
+    if (
+      audioContext.state ===
+      'suspended'
+    ) {
+
+      try {
+
+        await audioContext.resume()
+
+      } catch (error) {
+
+        console.warn(
+          'AudioContext resume error:',
+          error
+        )
+      }
+    }
+
+
+    analyser =
+      audioContext
+        .createAnalyser()
+
+
+    /*
+     * 数字を大きくすると
+     * 音量変化を細かく見られる
+     */
+    analyser.fftSize =
+      512
+
+
+    /*
+     * 口がガチャガチャしすぎないよう
+     * 少し滑らかにする
+     */
+    analyser.smoothingTimeConstant =
+      0.65
+
+
+    remoteAudioSource =
+      audioContext
+        .createMediaStreamSource(
+          stream
+        )
+
+
+    remoteAudioSource
+      .connect(
+        analyser
+      )
+
+
+    const buffer =
+      new Uint8Array(
+        analyser.fftSize
+      )
+
+
+    silenceFrames =
+      0
+
+
+    function animate(
+      now
+    ) {
+
+      if (!analyser) {
+        return
+      }
+
+
+      analyser
+        .getByteTimeDomainData(
+          buffer
+        )
+
+
+      /*
+       * RMS = 実際の音量を計算
+       */
+      let sum =
+        0
+
+
+      for (
+        let i = 0;
+        i < buffer.length;
+        i++
+      ) {
+
+        const normalized =
+          (
+            buffer[i] - 128
+          ) / 128
+
+
+        sum +=
+          normalized *
+          normalized
+      }
+
+
+      const rms =
+        Math.sqrt(
+          sum /
+          buffer.length
+        )
+
+
+      /*
+       * 画像の変更頻度を制限
+       * 速すぎるとパカパカしすぎる
+       */
+      if (
+        now -
+        lastMouthChange >
+        85
+      ) {
+
+        let nextMouth =
+          currentMouth
+
+
+        /*
+         * ほぼ無音
+         */
+        if (
+          rms < 0.010
+        ) {
+
+          silenceFrames++
+
+
+          /*
+           * 一瞬の無音では
+           * 口を閉じない
+           */
+          if (
+            silenceFrames > 4
+          ) {
+
+            nextMouth =
+              'close'
+          }
+
+        } else {
+
+          silenceFrames =
+            0
+
+
+          /*
+           * 小さめの声
+           */
+          if (
+            rms < 0.025
+          ) {
+
+            nextMouth =
+              'small'
+
+          /*
+           * 普通の声
+           */
+          } else if (
+            rms < 0.055
+          ) {
+
+            /*
+             * small と open を
+             * 少し混ぜると自然
+             */
+            nextMouth =
+              Math.random() <
+              0.45
+                ? 'small'
+                : 'open'
+
+          /*
+           * 大きめの声
+           */
+          } else {
+
+            nextMouth =
+              'open'
+          }
+        }
+
+
+        if (
+          nextMouth !==
+          currentMouth
+        ) {
+
+          setMouth(
+            nextMouth
+          )
+
+          lastMouthChange =
+            now
+        }
+      }
+
+
+      lipSyncFrame =
+        requestAnimationFrame(
+          animate
+        )
+    }
+
+
+    lipSyncFrame =
+      requestAnimationFrame(
+        animate
+      )
   }
 
 
@@ -365,7 +603,12 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      setClosedMouth()
+      currentMouth =
+        ''
+
+      setMouth(
+        'close'
+      )
 
 
       if (
@@ -378,7 +621,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
 
       console.error(
         'Initialize error:',
@@ -432,9 +677,17 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      setClosedMouth()
+      currentMouth =
+        ''
+
+      setMouth(
+        'close'
+      )
 
 
+      /*
+       * Realtime一時キー
+       */
       const tokenResponse =
         await fetch(
           '/api/realtime',
@@ -472,12 +725,6 @@ import Layout from '../layouts/Layout.astro'
           .json()
 
 
-      console.log(
-        'Realtime token response:',
-        tokenData
-      )
-
-
       const ephemeralKey =
         tokenData.value ||
 
@@ -503,11 +750,15 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * WebRTC
+       */
       peerConnection =
         new RTCPeerConnection()
 
 
       /*
+       * OpenAIから届く
        * けいの音声
        */
       if (
@@ -525,10 +776,14 @@ import Layout from '../layouts/Layout.astro'
               event
             ) => {
 
+              const remoteStream =
+                event
+                  .streams[0]
+
+
               remoteAudio
                 .srcObject =
-                  event
-                    .streams[0]
+                  remoteStream
 
 
               try {
@@ -545,68 +800,17 @@ import Layout from '../layouts/Layout.astro'
                   error
                 )
               }
-            }
 
 
-        /*
-         * audio要素が
-         * 実際に再生されたら
-         * 口パク開始
-         */
-        remoteAudio
-          .addEventListener(
-            'play',
-            () => {
-
-              console.log(
-                'remoteAudio play'
+              /*
+               * ここで
+               * 実際のけいの音声を
+               * 解析開始
+               */
+              await startRealLipSync(
+                remoteStream
               )
-
-              startAssistantSpeaking()
             }
-          )
-
-
-        remoteAudio
-          .addEventListener(
-            'playing',
-            () => {
-
-              console.log(
-                'remoteAudio playing'
-              )
-
-              startAssistantSpeaking()
-            }
-          )
-
-
-        remoteAudio
-          .addEventListener(
-            'pause',
-            () => {
-
-              console.log(
-                'remoteAudio pause'
-              )
-
-              stopAssistantSpeaking()
-            }
-          )
-
-
-        remoteAudio
-          .addEventListener(
-            'ended',
-            () => {
-
-              console.log(
-                'remoteAudio ended'
-              )
-
-              stopAssistantSpeaking()
-            }
-          )
       }
 
 
@@ -647,6 +851,9 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
+      /*
+       * Realtimeイベント
+       */
       dataChannel =
         peerConnection
           .createDataChannel(
@@ -657,11 +864,6 @@ import Layout from '../layouts/Layout.astro'
       dataChannel
         .onopen =
           () => {
-
-            console.log(
-              'Realtime connected'
-            )
-
 
             if (
               status
@@ -693,6 +895,9 @@ import Layout from '../layouts/Layout.astro'
             }
 
 
+            /*
+             * 最初の挨拶
+             */
             dataChannel
               .send(
                 JSON.stringify({
@@ -764,15 +969,8 @@ import Layout from '../layouts/Layout.astro'
                 )
 
 
-              console.log(
-                'Realtime event:',
-                message
-              )
-
-
               /*
-               * お客様が
-               * 話し始めた
+               * お客様が話し始めた
                */
               if (
                 message.type ===
@@ -801,8 +999,7 @@ import Layout from '../layouts/Layout.astro'
 
 
               /*
-               * お客様が
-               * 話し終わった
+               * お客様が話し終わった
                */
               if (
                 message.type ===
@@ -831,20 +1028,15 @@ import Layout from '../layouts/Layout.astro'
 
 
               /*
-               * OpenAIが
-               * 音声を作り始めた
+               * けいが話している
                *
-               * audio要素のイベントが
-               * 発火しないブラウザ対策として
-               * ここでも口パク開始
+               * ここでは画像は触らない
+               * 口は実際の音声波形で動く
                */
               if (
                 message.type ===
                 'response.audio.delta'
               ) {
-
-                startAssistantSpeaking()
-
 
                 if (
                   status
@@ -868,15 +1060,16 @@ import Layout from '../layouts/Layout.astro'
 
 
               /*
-               * 返答終了
+               * 返答生成終了
+               *
+               * ここでも口は閉じない
+               * 実音声がなくなったら
+               * 波形解析が自動で閉じる
                */
               if (
                 message.type ===
                 'response.done'
               ) {
-
-                stopAssistantSpeaking()
-
 
                 if (
                   status
@@ -899,6 +1092,9 @@ import Layout from '../layouts/Layout.astro'
               }
 
 
+              /*
+               * APIエラー
+               */
               if (
                 message.type ===
                 'error'
@@ -908,9 +1104,6 @@ import Layout from '../layouts/Layout.astro'
                   'Realtime API error:',
                   message
                 )
-
-
-                stopAssistantSpeaking()
 
 
                 if (
@@ -936,6 +1129,9 @@ import Layout from '../layouts/Layout.astro'
           }
 
 
+      /*
+       * WebRTC Offer
+       */
       const offer =
         await peerConnection
           .createOffer()
@@ -947,6 +1143,9 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
+      /*
+       * OpenAIへSDP
+       */
       const sdpResponse =
         await fetch(
           'https://api.openai.com/v1/realtime/calls',
@@ -1027,8 +1226,6 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      stopAssistantSpeaking()
-
       stopVoice()
     }
   }
@@ -1036,7 +1233,7 @@ import Layout from '../layouts/Layout.astro'
 
   function stopVoice() {
 
-    stopAssistantSpeaking()
+    stopRealLipSync()
 
 
     if (
@@ -1095,6 +1292,17 @@ import Layout from '../layouts/Layout.astro'
 
 
     if (
+      audioContext &&
+      audioContext.state !==
+      'closed'
+    ) {
+
+      audioContext
+        .suspend()
+    }
+
+
+    if (
       status
     ) {
 
@@ -1114,7 +1322,12 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
-    setClosedMouth()
+    currentMouth =
+      ''
+
+    setMouth(
+      'close'
+    )
 
 
     if (
@@ -1158,6 +1371,8 @@ import Layout from '../layouts/Layout.astro'
       stopVoice
     )
 
+
+  preloadAvatarImages()
 
   initializeUser()
 </script>
