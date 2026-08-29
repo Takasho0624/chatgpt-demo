@@ -14,11 +14,12 @@ export default () => {
   const [currentSystemRoleSettings, setCurrentSystemRoleSettings] = createSignal('')
   const [systemRoleEditing, setSystemRoleEditing] = createSignal(false)
 
-  // 今回のログイン中に画面へ表示する会話だけ
   const [messageList, setMessageList] = createSignal<ChatMessage[]>([])
-
-  // 過去ログ。画面には出さず、けいの文脈としてだけ使う
   const [hiddenHistory, setHiddenHistory] = createSignal<ChatMessage[]>([])
+
+  const [profileName, setProfileName] = createSignal('')
+  const [nameConfirmed, setNameConfirmed] = createSignal(false)
+  const [profileMemory, setProfileMemory] = createSignal('')
 
   const [currentError, setCurrentError] = createSignal<ErrorMessage>()
   const [currentAssistantMessage, setCurrentAssistantMessage] = createSignal('')
@@ -39,6 +40,59 @@ export default () => {
     if (isStick())
       smoothToBottom()
   })
+
+  // -------------------------
+  // 敬称ダブり防止
+  // -------------------------
+
+  const formatDisplayName = (name: string) => {
+    const honorifics = [
+      'さん',
+      'くん',
+      '君',
+      'ちゃん',
+      '先生',
+      'さま',
+      '様',
+      '氏',
+    ]
+
+    const alreadyHasHonorific = honorifics.some(
+      honorific => name.endsWith(honorific),
+    )
+
+    return alreadyHasHonorific
+      ? name
+      : `${name}さん`
+  }
+
+  // -------------------------
+  // 日本時間の挨拶
+  // -------------------------
+
+  const getJapaneseGreeting = () => {
+    const parts = new Intl.DateTimeFormat('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(new Date())
+
+    const hour = Number(
+      parts.find(part => part.type === 'hour')?.value || '0',
+    )
+
+    if (hour >= 5 && hour < 11)
+      return 'おはようございます'
+
+    if (hour >= 11 && hour < 18)
+      return 'こんにちは'
+
+    return 'こんばんは'
+  }
+
+  // -------------------------
+  // 会話ログ保存
+  // -------------------------
 
   const saveMessage = async(
     role: 'user' | 'assistant',
@@ -68,104 +122,211 @@ export default () => {
     }
   }
 
-  const getJapaneseGreeting = () => {
-    const hour = Number(
-      new Intl.DateTimeFormat('ja-JP', {
-        timeZone: 'Asia/Tokyo',
-        hour: '2-digit',
-        hour12: false,
-      }).format(new Date()),
-    )
+  // -------------------------
+  // 初回の呼び名確認
+  // -------------------------
 
-    if (hour >= 5 && hour < 11)
-      return 'おはよう'
-
-    if (hour >= 11 && hour < 18)
-      return 'こんにちは'
-
-    return 'こんばんは'
-  }
-
-  const initializeUser = async() => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user)
+  const confirmNamePreference = async(content: string) => {
+    if (nameConfirmed())
       return
 
-    // -----------------------
-    // プロフィール取得
-    // -----------------------
+    const text = content.trim()
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('display_name, memory')
-      .eq('user_id', user.id)
-      .maybeSingle()
+    if (!text)
+      return
 
-    let displayName = profile?.display_name || ''
+    let detectedName = ''
 
-    // 初回ならGoogleアカウント名を仮の名前として保存
-    if (!displayName) {
-      displayName
-        = user.user_metadata?.full_name
-          || user.user_metadata?.name
-          || ''
+    const keepCurrentPatterns = [
+      /そのままで/,
+      /その名前で/,
+      /それでいい/,
+      /それでお願いします/,
+      /今のままで/,
+    ]
 
-      await supabase
+    if (keepCurrentPatterns.some(pattern => pattern.test(text))) {
+      detectedName = profileName()
+    }
+
+    if (!detectedName) {
+      const patterns = [
+        /(?:私の名前は|名前は|僕は|ぼくは|私は|わたしは)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:です|だよ|だ|といいます|と言います)/,
+        /[「『]?([^」』、。！!？?\n]+?)[」』]?(?:って呼んで|と呼んで|と呼んでください|で呼んで)/,
+        /[「『]?([^」』、。！!？?\n]+?)[」』]?(?:でいいです|でいいよ|でお願いします|がいいです|がいいよ)/,
+      ]
+
+      for (const pattern of patterns) {
+        const match = text.match(pattern)
+
+        if (match?.[1]) {
+          detectedName = match[1].trim()
+          break
+        }
+      }
+    }
+
+    if (!detectedName && text.length <= 30) {
+      let candidate = text
+        .replace(/^(じゃあ|では|えっと|うん|はい)[、,\s]*/g, '')
+        .replace(/(でお願いします|でいいです|でいいよ|で|と呼んで|って呼んで)$/g, '')
+        .trim()
+
+      if (
+        candidate
+        && candidate.length <= 20
+        && !/[。！!？?]/.test(candidate)
+      ) {
+        detectedName = candidate
+      }
+    }
+
+    if (!detectedName)
+      return
+
+    detectedName = detectedName
+      .replace(/^「|」$/g, '')
+      .replace(/^『|』$/g, '')
+      .trim()
+
+    if (!detectedName)
+      return
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user)
+        return
+
+      const { error } = await supabase
         .from('profiles')
         .upsert({
           user_id: user.id,
-          display_name: displayName || null,
-          memory: profile?.memory || null,
+          display_name: detectedName,
+          name_confirmed: true,
+          memory: profileMemory() || null,
           updated_at: new Date().toISOString(),
         })
+
+      if (error) {
+        console.error('Failed to update name:', error)
+        return
+      }
+
+      setProfileName(detectedName)
+      setNameConfirmed(true)
     }
-
-    // -----------------------
-    // 過去ログは裏でだけ読む
-    // -----------------------
-
-    const { data: oldMessages, error } = await supabase
-      .from('messages')
-      .select('role, content, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(maxHistoryMessages)
-
-    if (error) {
-      console.error('Failed to load history:', error)
+    catch (err) {
+      console.error('Failed to confirm name:', err)
     }
-    else if (oldMessages) {
-      const history = [...oldMessages]
-        .reverse()
-        .map(item => ({
-          role: item.role,
-          content: item.content,
-        })) as ChatMessage[]
-
-      setHiddenHistory(history)
-    }
-
-    // -----------------------
-    // 日本時間で最初の挨拶
-    // -----------------------
-
-    const greeting = getJapaneseGreeting()
-
-    const greetingMessage = displayName
-      ? `${greeting}、${displayName}さん🍸`
-      : `${greeting}🍸`
-
-    // 挨拶は表示するだけ。DBには保存しない
-    setMessageList([
-      {
-        role: 'assistant',
-        content: greetingMessage,
-      },
-    ])
   }
+
+  // -------------------------
+  // ユーザー初期化
+  // -------------------------
+
+  const initializeUser = async() => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user)
+        return
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('display_name, memory, name_confirmed')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (profileError)
+        console.error('Failed to load profile:', profileError)
+
+      let displayName = profile?.display_name || ''
+      let confirmed = profile?.name_confirmed || false
+      const memory = profile?.memory || ''
+
+      if (!displayName) {
+        displayName
+          = user.user_metadata?.full_name
+          || user.user_metadata?.name
+          || user.email?.split('@')[0]
+          || 'お客さま'
+
+        const { error } = await supabase
+          .from('profiles')
+          .upsert({
+            user_id: user.id,
+            display_name: displayName,
+            name_confirmed: false,
+            memory: memory || null,
+            updated_at: new Date().toISOString(),
+          })
+
+        if (error)
+          console.error('Failed to create profile:', error)
+
+        confirmed = false
+      }
+
+      setProfileName(displayName)
+      setNameConfirmed(confirmed)
+      setProfileMemory(memory)
+
+      const { data: oldMessages, error: historyError } = await supabase
+        .from('messages')
+        .select('role, content, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(maxHistoryMessages)
+
+      if (historyError) {
+        console.error('Failed to load history:', historyError)
+      }
+      else if (oldMessages) {
+        const history = [...oldMessages]
+          .reverse()
+          .map(item => ({
+            role: item.role,
+            content: item.content,
+          })) as ChatMessage[]
+
+        setHiddenHistory(history)
+      }
+
+      const greeting = getJapaneseGreeting()
+
+      let openingMessage = ''
+
+      if (confirmed) {
+        openingMessage
+          = `${greeting}、${formatDisplayName(displayName)}🍸\n今夜もゆっくりしていってね。`
+      }
+      else {
+        openingMessage
+          = `${greeting}、${formatDisplayName(displayName)}🍸\n`
+          + `${formatDisplayName(displayName)}とお呼びしていいですか？ `
+          + 'それとも、ニックネームや別の呼び名がありますか？'
+      }
+
+      setMessageList([
+        {
+          role: 'assistant',
+          content: openingMessage,
+        },
+      ])
+    }
+    catch (err) {
+      console.error('Failed to initialize user:', err)
+    }
+  }
+
+  // -------------------------
+  // 起動
+  // -------------------------
 
   onMount(async() => {
     let lastPosition = window.scrollY
@@ -180,8 +341,11 @@ export default () => {
     })
 
     try {
-      if (sessionStorage.getItem('systemRoleSettings'))
-        setCurrentSystemRoleSettings(sessionStorage.getItem('systemRoleSettings') || '')
+      if (sessionStorage.getItem('systemRoleSettings')) {
+        setCurrentSystemRoleSettings(
+          sessionStorage.getItem('systemRoleSettings') || '',
+        )
+      }
 
       if (localStorage.getItem('stickToBottom') === 'stick')
         setStick(true)
@@ -211,13 +375,18 @@ export default () => {
       localStorage.removeItem('stickToBottom')
   }
 
+  // -------------------------
+  // ユーザー送信
+  // -------------------------
+
   const handleButtonClick = async() => {
-    const inputValue = inputRef.value
+    const inputValue = inputRef.value.trim()
 
     if (!inputValue)
       return
 
     inputRef.value = ''
+    inputRef.style.height = 'auto'
 
     setMessageList([
       ...messageList(),
@@ -229,7 +398,10 @@ export default () => {
 
     await saveMessage('user', inputValue)
 
-    requestWithLatestMessage()
+    await confirmNamePreference(inputValue)
+
+    await requestWithLatestMessage()
+
     instantToBottom()
   }
 
@@ -247,6 +419,10 @@ export default () => {
     })
   }
 
+  // -------------------------
+  // AIリクエスト
+  // -------------------------
+
   const requestWithLatestMessage = async() => {
     setLoading(true)
     setCurrentAssistantMessage('')
@@ -258,27 +434,39 @@ export default () => {
       const controller = new AbortController()
       setController(controller)
 
-      // 過去ログ＋今回の会話を合わせる
-      // ただし画面上には過去ログを表示しない
+      const visibleMessages = messageList().filter((message, index) => {
+        return index !== 0
+      })
+
       const allMessages = [
         ...hiddenHistory(),
-        ...messageList().filter(message =>
-          !(message.role === 'assistant'
-            && (
-              message.content.startsWith('おはよう')
-              || message.content.startsWith('こんにちは')
-              || message.content.startsWith('こんばんは')
-            )),
-        ),
+        ...visibleMessages,
       ]
 
       const requestMessageList
         = allMessages.slice(-maxHistoryMessages)
 
+      let profileContext = ''
+
+      if (nameConfirmed() && profileName()) {
+        profileContext +=
+          `このユーザーの希望する呼び名は「${profileName()}」。`
+      }
+
+      if (profileMemory()) {
+        profileContext +=
+          `\nこのユーザーについて記憶していること:\n${profileMemory()}`
+      }
+
       if (currentSystemRoleSettings()) {
+        profileContext +=
+          `\n\n${currentSystemRoleSettings()}`
+      }
+
+      if (profileContext) {
         requestMessageList.unshift({
           role: 'system',
-          content: currentSystemRoleSettings(),
+          content: profileContext,
         })
       }
 
@@ -292,9 +480,10 @@ export default () => {
           pass: storagePassword,
           sign: await generateSignature({
             t: timestamp,
-            m: requestMessageList?.[
-              requestMessageList.length - 1
-            ]?.content || '',
+            m:
+              requestMessageList?.[
+                requestMessageList.length - 1
+              ]?.content || '',
           }),
           temperature: temperature(),
         }),
@@ -303,8 +492,10 @@ export default () => {
 
       if (!response.ok) {
         const error = await response.json()
+
         console.error(error.error)
         setCurrentError(error.error)
+
         throw new Error('Request failed')
       }
 
@@ -348,8 +539,10 @@ export default () => {
     }
     catch (e) {
       console.error(e)
+
       setLoading(false)
       setController(null)
+
       return
     }
 
@@ -359,38 +552,45 @@ export default () => {
       instantToBottom()
   }
 
+  // -------------------------
+  // AI返答確定
+  // -------------------------
+
   const archiveCurrentMessage = async() => {
     const assistantMessage = currentAssistantMessage()
 
-    if (assistantMessage) {
-      setMessageList([
-        ...messageList(),
-        {
-          role: 'assistant',
-          content: assistantMessage,
-        },
-      ])
+    if (!assistantMessage)
+      return
 
-      await saveMessage(
-        'assistant',
-        assistantMessage,
-      )
+    setMessageList([
+      ...messageList(),
+      {
+        role: 'assistant',
+        content: assistantMessage,
+      },
+    ])
 
-      setCurrentAssistantMessage('')
-      setLoading(false)
-      setController(null)
+    await saveMessage(
+      'assistant',
+      assistantMessage,
+    )
 
-      if (!(
-        'ontouchstart' in document.documentElement
-        || navigator.maxTouchPoints > 0
-      )) {
-        inputRef.focus()
-      }
+    setCurrentAssistantMessage('')
+    setLoading(false)
+    setController(null)
+
+    if (!(
+      'ontouchstart' in document.documentElement
+      || navigator.maxTouchPoints > 0
+    )) {
+      inputRef.focus()
     }
   }
 
-  // 「新しい夜」は表示中の会話だけリセット。
-  // Supabaseの過去ログやプロフィールは消さない。
+  // -------------------------
+  // 新しい夜
+  // -------------------------
+
   const clear = () => {
     inputRef.value = ''
     inputRef.style.height = 'auto'
@@ -400,10 +600,14 @@ export default () => {
 
     const greeting = getJapaneseGreeting()
 
+    const openingMessage = nameConfirmed() && profileName()
+      ? `${greeting}、${formatDisplayName(profileName())}🍸\nさて、今夜は何のお話をしましょう？`
+      : `${greeting}🍸`
+
     setMessageList([
       {
         role: 'assistant',
-        content: `${greeting}🍸`,
+        content: openingMessage,
       },
     ])
   }
@@ -486,6 +690,7 @@ export default () => {
         fallback={() => (
           <div class="gen-cb-wrapper">
             <span>AI is thinking...</span>
+
             <div
               class="gen-cb-stop"
               onClick={stopStreamFetch}
