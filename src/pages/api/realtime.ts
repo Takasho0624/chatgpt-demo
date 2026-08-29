@@ -35,7 +35,7 @@ export const post: APIRoute = async () => {
 
             audio: {
               output: {
-                voice: 'marin',
+                voice: 'shimmer',
               },
             },
 
