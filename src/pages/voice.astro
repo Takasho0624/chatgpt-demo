@@ -1,158 +1,2378 @@
-import type { APIRoute } from 'astro'
+---
+import Layout from '../layouts/Layout.astro'
+---
 
-export const post: APIRoute = async ({ request }) => {
-  try {
-    const apiKey = import.meta.env.OPENAI_API_KEY
+<Layout title="けいのBAR - Voice">
+  <main class="voice-page">
 
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({
-          error: 'OPENAI_API_KEY is not set',
-        }),
-        {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        },
+    <section class="bar-card">
+
+      <div class="title">
+        けいのBAR
+      </div>
+
+      <div id="customer-name" class="customer-name">
+        お客様情報を確認しています…
+      </div>
+
+      <div id="status" class="status">
+        少し待ってね🍸
+      </div>
+
+      <div class="kei-area">
+
+        <div class="kei-area__bg"></div>
+        <div class="kei-area__overlay"></div>
+
+        <div class="kei-area__inner">
+
+          <img
+            id="kei-avatar"
+            src="/kei-mouth-close.png"
+            alt="けい"
+            class="kei-avatar"
+          />
+
+          <div id="kei-state" class="kei-state">
+            準備中
+          </div>
+
+        </div>
+
+      </div>
+
+      <button
+        id="voice-button"
+        class="voice-button"
+        type="button"
+        disabled
+      >
+        🎙️ けいと話す
+      </button>
+
+      <button
+        id="stop-button"
+        class="stop-button"
+        type="button"
+        disabled
+      >
+        会話を終了
+      </button>
+
+      <audio
+        id="remote-audio"
+        autoplay
+      ></audio>
+
+    </section>
+
+  </main>
+</Layout>
+
+
+<script>
+  import { supabase } from '../utils/supabase'
+
+  let peerConnection = null
+  let localStream = null
+  let dataChannel = null
+
+  let displayName = 'お客様'
+  let memory = ''
+
+  /*
+   * リップシンク
+   */
+  let audioContext = null
+  let analyser = null
+  let remoteAudioSource = null
+  let lipSyncFrame = null
+
+  let currentMouth = 'close'
+  let lastMouthChange = 0
+  let silenceFrames = 0
+
+  /*
+   * まばたき
+   */
+  let blinkTimer = null
+  let blinkReturnTimer = null
+  let isKeiSpeaking = false
+  let isBlinking = false
+
+  /*
+   * Web検索
+   */
+  const handledToolCalls =
+    new Set()
+
+
+  const CLOSED_SRC =
+    '/kei-mouth-close.png'
+
+  const SMALL_OPEN_SRC =
+    '/kei-mouth-open-small.png'
+
+  const OPEN_SRC =
+    '/kei-mouth-open.png'
+
+  const BLINK_SRC =
+    '/kei-eyes-close.png'
+
+
+  const voiceButton =
+    document.getElementById(
+      'voice-button'
+    )
+
+  const stopButton =
+    document.getElementById(
+      'stop-button'
+    )
+
+  const status =
+    document.getElementById(
+      'status'
+    )
+
+  const keiState =
+    document.getElementById(
+      'kei-state'
+    )
+
+  const customerName =
+    document.getElementById(
+      'customer-name'
+    )
+
+  const remoteAudio =
+    document.getElementById(
+      'remote-audio'
+    )
+
+  const keiAvatar =
+    document.getElementById(
+      'kei-avatar'
+    )
+
+
+  function preloadAvatarImages() {
+
+    [
+      CLOSED_SRC,
+      SMALL_OPEN_SRC,
+      OPEN_SRC,
+      BLINK_SRC,
+    ].forEach((src) => {
+
+      const image =
+        new Image()
+
+      image.src =
+        src
+    })
+  }
+
+
+  function setMouth(type) {
+
+    if (!keiAvatar) {
+      return
+    }
+
+    if (isBlinking) {
+      return
+    }
+
+    if (
+      currentMouth === type
+    ) {
+      return
+    }
+
+    currentMouth =
+      type
+
+
+    if (
+      type === 'close'
+    ) {
+
+      keiAvatar.src =
+        CLOSED_SRC
+    }
+
+
+    if (
+      type === 'small'
+    ) {
+
+      keiAvatar.src =
+        SMALL_OPEN_SRC
+    }
+
+
+    if (
+      type === 'open'
+    ) {
+
+      keiAvatar.src =
+        OPEN_SRC
+    }
+  }
+
+
+  /*
+   * まばたき
+   */
+  function scheduleBlink() {
+
+    if (
+      blinkTimer
+    ) {
+
+      clearTimeout(
+        blinkTimer
       )
     }
 
-    const body = await request.json().catch(() => ({}))
 
-    const displayName =
-      typeof body.displayName === 'string' && body.displayName.trim()
-        ? body.displayName.trim()
-        : 'お客様'
+    const delay =
+      4500 +
+      Math.random() *
+      4000
 
-    const memory =
-      typeof body.memory === 'string'
-        ? body.memory.trim()
-        : ''
 
-    const instructions = `
-あなたは「甲村けいこ」という女性AIです。
-愛称は「けい」です。
+    blinkTimer =
+      setTimeout(
+        () => {
 
-あなたは「けいのBAR」にいる女性です。
-お客様とは自然な会話をしてください。
+          if (
+            !isKeiSpeaking &&
+            !isBlinking &&
+            keiAvatar
+          ) {
 
-今、目の前にいるお客様の呼び名は「${displayName}」です。
-この呼び名は自然な場面で使ってください。
-毎回名前を呼ぶ必要はありません。
+            blinkOnce()
+          }
 
-【最初の雰囲気】
-・最初の入りは「いらっしゃいませ」を基本にしてください
-・ただし堅すぎる接客にはしないでください
-・やわらかく、親しみのある自然な感じにしてください
 
-【話し方】
-・女性らしく、柔らかく、明るい話し方
-・少し快活で、感じのいい雰囲気
-・中性的、ボーイッシュ、ぶっきらぼうな印象は避ける
-・落ち着きはあるが、まったりしすぎない
-・文章を読み上げる感じではなく、その場で話している自然なリズムにする
-・少し口語的でよい
-・「うん」「そうそう」「あー、なるほど」「分かる」など自然な相槌も使ってよい
-・ただし相槌や定型句を毎回同じように繰り返さない
+          scheduleBlink()
 
-【返答の長さ】
-・会話では、1回の返答を短めにしてください
-・通常の雑談では1〜3文程度を基本にしてください
-・まずは短く答えてください
-・詳しい説明は、お客様がさらに聞いたときに続けてください
-・簡単な話に長い説明をつけないでください
-・相槌だけで十分な場面では、短く自然に返してください
-・毎回まとめや結論をつける必要はありません
-・音声での1回の返答は、普段は20〜50文字くらいの軽さを意識してください
-・必要な説明でも、まずは100文字程度以内の要点から入ってください
-
-【会話の姿勢】
-・AIアシスタントのように整いすぎた説明をしない
-・会話を終わらせようとしない
-・「ほかに質問はありますか？」のような締めはしない
-・普通の雑談のように、自然に続ける
-・知らないことは知っているふりをしない
-
-【お客様について覚えている内容】
-${memory || 'まだ特にありません。'}
-
-この記憶は、必要なときだけ自然に使ってください。
-記憶にないことを知っているふりはしないでください。
-    `.trim()
-
-    const response = await fetch(
-      'https://api.openai.com/v1/realtime/client_secrets',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          session: {
-            type: 'realtime',
-            model: 'gpt-realtime-2.1',
-            instructions,
-            audio: {
-              input: {
-                turn_detection: {
-                  type: 'server_vad',
-                  threshold: 0.78,
-                  prefix_padding_ms: 300,
-                  silence_duration_ms: 900,
-                },
-              },
-              output: {
-                voice: 'shimmer',
-              },
-            },
-          },
-        }),
-      },
-    )
+        delay
+      )
+  }
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Realtime client secret error:', errorText)
 
-      return new Response(
-        JSON.stringify({
-          error: errorText,
-        }),
-        {
-          status: response.status,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        },
+  function blinkOnce() {
+
+    if (
+      !keiAvatar ||
+      isKeiSpeaking ||
+      isBlinking
+    ) {
+
+      return
+    }
+
+
+    isBlinking =
+      true
+
+
+    keiAvatar.src =
+      BLINK_SRC
+
+
+    if (
+      blinkReturnTimer
+    ) {
+
+      clearTimeout(
+        blinkReturnTimer
       )
     }
 
-    const data = await response.json()
 
-    return new Response(
-      JSON.stringify(data),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
-    )
-  } catch (error) {
-    console.error(error)
+    blinkReturnTimer =
+      setTimeout(
+        () => {
 
-    return new Response(
-      JSON.stringify({
-        error: 'Failed to create realtime session',
-      }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
+          isBlinking =
+            false
+
+
+          if (
+            !isKeiSpeaking &&
+            keiAvatar
+          ) {
+
+            currentMouth =
+              'close'
+
+            keiAvatar.src =
+              CLOSED_SRC
+          }
+
         },
-      },
+        140
+      )
+  }
+
+
+  function stopBlinking() {
+
+    if (
+      blinkTimer
+    ) {
+
+      clearTimeout(
+        blinkTimer
+      )
+
+      blinkTimer =
+        null
+    }
+
+
+    if (
+      blinkReturnTimer
+    ) {
+
+      clearTimeout(
+        blinkReturnTimer
+      )
+
+      blinkReturnTimer =
+        null
+    }
+
+
+    isBlinking =
+      false
+  }
+
+
+  /*
+   * リップシンク
+   */
+  function stopRealLipSync() {
+
+    if (
+      lipSyncFrame
+    ) {
+
+      cancelAnimationFrame(
+        lipSyncFrame
+      )
+
+      lipSyncFrame =
+        null
+    }
+
+
+    if (
+      remoteAudioSource
+    ) {
+
+      try {
+
+        remoteAudioSource
+          .disconnect()
+
+      } catch (error) {
+
+        // ignore
+      }
+
+      remoteAudioSource =
+        null
+    }
+
+
+    analyser =
+      null
+
+    silenceFrames =
+      0
+
+    isKeiSpeaking =
+      false
+
+    currentMouth =
+      ''
+
+    setMouth(
+      'close'
     )
   }
+
+
+  async function startRealLipSync(
+    stream
+  ) {
+
+    if (!stream) {
+      return
+    }
+
+
+    if (
+      lipSyncFrame
+    ) {
+
+      cancelAnimationFrame(
+        lipSyncFrame
+      )
+
+      lipSyncFrame =
+        null
+    }
+
+
+    if (
+      remoteAudioSource
+    ) {
+
+      try {
+
+        remoteAudioSource
+          .disconnect()
+
+      } catch (error) {
+
+        // ignore
+      }
+
+      remoteAudioSource =
+        null
+    }
+
+
+    if (
+      !audioContext ||
+      audioContext.state ===
+        'closed'
+    ) {
+
+      audioContext =
+        new AudioContext()
+    }
+
+
+    if (
+      audioContext.state ===
+      'suspended'
+    ) {
+
+      try {
+
+        await audioContext
+          .resume()
+
+      } catch (error) {
+
+        console.warn(
+          'AudioContext resume error:',
+          error
+        )
+      }
+    }
+
+
+    analyser =
+      audioContext
+        .createAnalyser()
+
+
+    analyser.fftSize =
+      512
+
+
+    analyser
+      .smoothingTimeConstant =
+        0.70
+
+
+    remoteAudioSource =
+      audioContext
+        .createMediaStreamSource(
+          stream
+        )
+
+
+    remoteAudioSource
+      .connect(
+        analyser
+      )
+
+
+    const buffer =
+      new Uint8Array(
+        analyser.fftSize
+      )
+
+
+    silenceFrames =
+      0
+
+
+    function animate(now) {
+
+      if (!analyser) {
+        return
+      }
+
+
+      analyser
+        .getByteTimeDomainData(
+          buffer
+        )
+
+
+      let sum =
+        0
+
+
+      for (
+        let i = 0;
+        i < buffer.length;
+        i++
+      ) {
+
+        const normalized =
+          (
+            buffer[i] - 128
+          ) / 128
+
+
+        sum +=
+          normalized *
+          normalized
+      }
+
+
+      const rms =
+        Math.sqrt(
+          sum /
+          buffer.length
+        )
+
+
+      if (
+        rms >= 0.010
+      ) {
+
+        isKeiSpeaking =
+          true
+
+      } else {
+
+        silenceFrames++
+
+
+        if (
+          silenceFrames > 7
+        ) {
+
+          isKeiSpeaking =
+            false
+        }
+      }
+
+
+      if (
+        now -
+        lastMouthChange >
+        90
+      ) {
+
+        let nextMouth =
+          currentMouth
+
+
+        if (
+          rms < 0.010
+        ) {
+
+          if (
+            silenceFrames > 5
+          ) {
+
+            nextMouth =
+              'close'
+          }
+
+        } else {
+
+          silenceFrames =
+            0
+
+          isKeiSpeaking =
+            true
+
+
+          if (
+            rms < 0.028
+          ) {
+
+            nextMouth =
+              'small'
+
+
+          } else if (
+            rms < 0.060
+          ) {
+
+            nextMouth =
+              Math.random() <
+              0.78
+                ? 'small'
+                : 'open'
+
+
+          } else {
+
+            nextMouth =
+              Math.random() <
+              0.55
+                ? 'small'
+                : 'open'
+          }
+        }
+
+
+        if (
+          nextMouth !==
+          currentMouth
+        ) {
+
+          setMouth(
+            nextMouth
+          )
+
+          lastMouthChange =
+            now
+        }
+      }
+
+
+      lipSyncFrame =
+        requestAnimationFrame(
+          animate
+        )
+    }
+
+
+    lipSyncFrame =
+      requestAnimationFrame(
+        animate
+      )
+  }
+
+
+  /*
+   * ユーザー情報取得
+   */
+  async function initializeUser() {
+
+    try {
+
+      const {
+        data: { user },
+      } =
+        await supabase
+          .auth
+          .getUser()
+
+
+      if (!user) {
+
+        window.location.href =
+          '/password'
+
+        return
+      }
+
+
+      const {
+        data: profile,
+        error,
+      } =
+        await supabase
+          .from('profiles')
+          .select(
+            'display_name, memory, name_confirmed'
+          )
+          .eq(
+            'user_id',
+            user.id
+          )
+          .maybeSingle()
+
+
+      if (error) {
+
+        console.error(
+          'Profile error:',
+          error
+        )
+      }
+
+
+      if (
+        profile?.display_name &&
+        profile
+          .display_name
+          .trim()
+      ) {
+
+        displayName =
+          profile
+            .display_name
+            .trim()
+
+      } else {
+
+        displayName =
+          user
+            .user_metadata
+            ?.full_name ||
+
+          user
+            .user_metadata
+            ?.name ||
+
+          user
+            .email
+            ?.split('@')[0] ||
+
+          'お客様'
+      }
+
+
+      if (
+        profile?.memory
+      ) {
+
+        memory =
+          profile.memory
+      }
+
+
+      if (
+        customerName
+      ) {
+
+        customerName
+          .textContent =
+            displayName
+      }
+
+
+      if (
+        status
+      ) {
+
+        status
+          .textContent =
+            'マイクを押してね🍸'
+      }
+
+
+      if (
+        keiState
+      ) {
+
+        keiState
+          .textContent =
+            '待ってるよ'
+      }
+
+
+      currentMouth =
+        ''
+
+      setMouth(
+        'close'
+      )
+
+
+      scheduleBlink()
+
+
+      if (
+        voiceButton
+      ) {
+
+        voiceButton
+          .disabled =
+            false
+      }
+
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        'Initialize error:',
+        error
+      )
+
+
+      if (
+        status
+      ) {
+
+        status
+          .textContent =
+            'ユーザー情報を取得できませんでした'
+      }
+    }
+  }
+
+
+  /*
+   * Web検索
+   */
+  async function handleWebSearch(
+    message
+  ) {
+
+    if (
+      !dataChannel ||
+      dataChannel.readyState !==
+        'open'
+    ) {
+
+      return
+    }
+
+
+    const callId =
+      message.call_id
+
+
+    if (!callId) {
+
+      console.error(
+        'search_web: call_id がありません',
+        message
+      )
+
+      return
+    }
+
+
+    if (
+      handledToolCalls
+        .has(callId)
+    ) {
+
+      return
+    }
+
+
+    handledToolCalls
+      .add(callId)
+
+
+    let args = {}
+
+
+    try {
+
+      args =
+        JSON.parse(
+          message.arguments ||
+          '{}'
+        )
+
+    } catch (error) {
+
+      console.error(
+        'Tool arguments parse error:',
+        error
+      )
+    }
+
+
+    const query =
+      typeof args.query ===
+        'string'
+        ? args.query.trim()
+        : ''
+
+
+    if (!query) {
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'conversation.item.create',
+
+          item: {
+            type:
+              'function_call_output',
+
+            call_id:
+              callId,
+
+            output:
+              '検索キーワードが取得できませんでした。',
+          },
+        })
+      )
+
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'response.create',
+        })
+      )
+
+
+      return
+    }
+
+
+    if (
+      status
+    ) {
+
+      status.textContent =
+        'Webで調べています…🌐'
+    }
+
+
+    if (
+      keiState
+    ) {
+
+      keiState.textContent =
+        '🔎'
+    }
+
+
+    try {
+
+      const response =
+        await fetch(
+          '/api/web-search',
+          {
+            method:
+              'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                query,
+              }),
+          }
+        )
+
+
+      const result =
+        await response
+          .json()
+
+
+      let answer =
+        ''
+
+
+      if (
+        response.ok &&
+        typeof result.answer ===
+          'string'
+      ) {
+
+        answer =
+          result.answer.trim()
+
+      } else {
+
+        answer =
+          'Web検索を試しましたが、今回は情報を取得できませんでした。'
+      }
+
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'conversation.item.create',
+
+          item: {
+            type:
+              'function_call_output',
+
+            call_id:
+              callId,
+
+            output:
+              answer,
+          },
+        })
+      )
+
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'response.create',
+
+          response: {
+            instructions: `
+search_web の検索結果が返ってきました。
+
+検索結果を踏まえて、
+お客様の元の質問に答えてください。
+
+検索結果をそのまま読み上げるのではなく、
+内容を理解したうえで、
+けい自身の自然な会話として説明してください。
+
+URLは読み上げないでください。
+
+検索結果に不確かな点がある場合は、
+断定しないでください。
+            `.trim(),
+          },
+        })
+      )
+
+
+      if (
+        status
+      ) {
+
+        status.textContent =
+          'けいが確認しています…'
+      }
+
+
+      if (
+        keiState
+      ) {
+
+        keiState.textContent =
+          '♪'
+      }
+
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        'Web search error:',
+        error
+      )
+
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'conversation.item.create',
+
+          item: {
+            type:
+              'function_call_output',
+
+            call_id:
+              callId,
+
+            output:
+              'Web検索中にエラーが発生し、最新情報を取得できませんでした。',
+          },
+        })
+      )
+
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'response.create',
+
+          response: {
+            instructions: `
+Web検索がうまくいきませんでした。
+
+知っているふりをせず、
+自然な会話として
+「ちょっと検索がうまくいかなかったみたい」
+などと伝えてください。
+            `.trim(),
+          },
+        })
+      )
+    }
+  }
+
+
+  /*
+   * 音声開始
+   */
+  async function startVoice() {
+
+    try {
+
+      handledToolCalls
+        .clear()
+
+
+      if (
+        voiceButton
+      ) {
+
+        voiceButton
+          .disabled =
+            true
+      }
+
+
+      if (
+        status
+      ) {
+
+        status
+          .textContent =
+            '接続しています…'
+      }
+
+
+      if (
+        keiState
+      ) {
+
+        keiState
+          .textContent =
+            'ちょっと待ってね'
+      }
+
+
+      currentMouth =
+        ''
+
+      setMouth(
+        'close'
+      )
+
+
+      const tokenResponse =
+        await fetch(
+          '/api/realtime',
+          {
+            method:
+              'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                displayName,
+                memory,
+              }),
+          }
+        )
+
+
+      if (
+        !tokenResponse.ok
+      ) {
+
+        throw new Error(
+          await tokenResponse
+            .text()
+        )
+      }
+
+
+      const tokenData =
+        await tokenResponse
+          .json()
+
+
+      const ephemeralKey =
+        tokenData.value ||
+
+        tokenData
+          .client_secret
+          ?.value ||
+
+        tokenData
+          .client_secret
+
+
+      if (
+        !ephemeralKey
+      ) {
+
+        console.error(
+          tokenData
+        )
+
+        throw new Error(
+          'Realtime token が取得できませんでした'
+        )
+      }
+
+
+      peerConnection =
+        new RTCPeerConnection()
+
+
+      if (
+        remoteAudio
+      ) {
+
+        remoteAudio
+          .autoplay =
+            true
+
+
+        peerConnection
+          .ontrack =
+            async (
+              event
+            ) => {
+
+              const remoteStream =
+                event
+                  .streams[0]
+
+
+              remoteAudio
+                .srcObject =
+                  remoteStream
+
+
+              try {
+
+                await remoteAudio
+                  .play()
+
+              } catch (
+                error
+              ) {
+
+                console.warn(
+                  'Audio play error:',
+                  error
+                )
+              }
+
+
+              await startRealLipSync(
+                remoteStream
+              )
+            }
+      }
+
+
+      localStream =
+        await navigator
+          .mediaDevices
+          .getUserMedia({
+            audio: {
+
+              echoCancellation:
+                true,
+
+              noiseSuppression:
+                true,
+
+              autoGainControl:
+                true,
+            },
+          })
+
+
+      localStream
+        .getTracks()
+        .forEach(
+          (
+            track
+          ) => {
+
+            peerConnection
+              .addTrack(
+                track,
+                localStream
+              )
+          }
+        )
+
+
+      dataChannel =
+        peerConnection
+          .createDataChannel(
+            'oai-events'
+          )
+
+
+      dataChannel
+        .onopen =
+          () => {
+
+            if (
+              status
+            ) {
+
+              status
+                .textContent =
+                  'けいにつながりました🎙️'
+            }
+
+
+            if (
+              keiState
+            ) {
+
+              keiState
+                .textContent =
+                  'いらっしゃいませ'
+            }
+
+
+            if (
+              stopButton
+            ) {
+
+              stopButton
+                .disabled =
+                  false
+            }
+
+
+            dataChannel
+              .send(
+                JSON.stringify({
+                  type:
+                    'response.create',
+
+                  response: {
+
+                    instructions: `
+お客様が来店しました。
+
+最初の一言として、
+自然に「いらっしゃいませ」と挨拶してください。
+
+お客様の呼び名は
+「${displayName}」です。
+
+名前を自然に入れても構いません。
+
+すでに知っているお客様を
+迎えるような、
+親しみのある挨拶にしてください。
+
+くつろいでもらう意味で
+声をかける場合は、
+
+「ゆっくりしていってね」
+
+と言ってください。
+
+「ゆっくり見ていってね」
+とは言わないでください。
+
+挨拶のあと、
+自然に軽く一言話しかけてください。
+                    `.trim(),
+                  },
+                })
+              )
+          }
+
+
+      dataChannel
+        .onmessage =
+          async (
+            event
+          ) => {
+
+            try {
+
+              const message =
+                JSON.parse(
+                  event.data
+                )
+
+
+              if (
+                message.type ===
+                'input_audio_buffer.speech_started'
+              ) {
+
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      '聞いてるよ…'
+                }
+
+
+                if (
+                  keiState
+                ) {
+
+                  keiState
+                    .textContent =
+                      '👂'
+                }
+              }
+
+
+              if (
+                message.type ===
+                'input_audio_buffer.speech_stopped'
+              ) {
+
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      'けいが考えています…'
+                }
+
+
+                if (
+                  keiState
+                ) {
+
+                  keiState
+                    .textContent =
+                      'んー'
+                }
+              }
+
+
+              if (
+                message.type ===
+                  'response.audio.delta' ||
+
+                message.type ===
+                  'response.output_audio.delta'
+              ) {
+
+                isKeiSpeaking =
+                  true
+
+
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      'けいが話しています'
+                }
+
+
+                if (
+                  keiState
+                ) {
+
+                  keiState
+                    .textContent =
+                      '♪'
+                }
+              }
+
+
+              if (
+                message.type ===
+                  'response.function_call_arguments.done' &&
+                message.name ===
+                  'search_web'
+              ) {
+
+                await handleWebSearch(
+                  message
+                )
+
+                return
+              }
+
+
+              if (
+                message.type ===
+                'response.done'
+              ) {
+
+                const hasFunctionCall =
+                  Array.isArray(
+                    message
+                      .response
+                      ?.output
+                  ) &&
+                  message
+                    .response
+                    .output
+                    .some(
+                      (item) =>
+                        item?.type ===
+                        'function_call'
+                    )
+
+
+                if (
+                  !hasFunctionCall
+                ) {
+
+                  if (
+                    status
+                  ) {
+
+                    status
+                      .textContent =
+                        '話しかけてね🎙️'
+                  }
+
+
+                  if (
+                    keiState
+                  ) {
+
+                    keiState
+                      .textContent =
+                        '聞いてるよ'
+                  }
+                }
+              }
+
+
+              if (
+                message.type ===
+                'error'
+              ) {
+
+                console.error(
+                  'Realtime API error:',
+                  message
+                )
+
+
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      '音声APIでエラーが出ました'
+                }
+              }
+
+
+            } catch (
+              error
+            ) {
+
+              console.error(
+                'Realtime message error:',
+                error
+              )
+            }
+          }
+
+
+      const offer =
+        await peerConnection
+          .createOffer()
+
+
+      await peerConnection
+        .setLocalDescription(
+          offer
+        )
+
+
+      const sdpResponse =
+        await fetch(
+          'https://api.openai.com/v1/realtime/calls',
+          {
+            method:
+              'POST',
+
+            headers: {
+
+              Authorization:
+                `Bearer ${ephemeralKey}`,
+
+              'Content-Type':
+                'application/sdp',
+            },
+
+            body:
+              peerConnection
+                .localDescription
+                .sdp,
+          }
+        )
+
+
+      if (
+        !sdpResponse.ok
+      ) {
+
+        throw new Error(
+          await sdpResponse
+            .text()
+        )
+      }
+
+
+      const answerSdp =
+        await sdpResponse
+          .text()
+
+
+      await peerConnection
+        .setRemoteDescription({
+          type:
+            'answer',
+
+          sdp:
+            answerSdp,
+        })
+
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        'Voice start error:',
+        error
+      )
+
+
+      if (
+        status
+      ) {
+
+        status
+          .textContent =
+            '接続できませんでした'
+      }
+
+
+      if (
+        keiState
+      ) {
+
+        keiState
+          .textContent =
+            'ごめん💦'
+      }
+
+
+      stopVoice()
+    }
+  }
+
+
+  /*
+   * 音声終了
+   */
+  function stopVoice() {
+
+    stopRealLipSync()
+
+    stopBlinking()
+
+
+    handledToolCalls
+      .clear()
+
+
+    if (
+      dataChannel
+    ) {
+
+      dataChannel
+        .close()
+
+      dataChannel =
+        null
+    }
+
+
+    if (
+      peerConnection
+    ) {
+
+      peerConnection
+        .close()
+
+      peerConnection =
+        null
+    }
+
+
+    if (
+      localStream
+    ) {
+
+      localStream
+        .getTracks()
+        .forEach(
+          (
+            track
+          ) => {
+
+            track
+              .stop()
+          }
+        )
+
+      localStream =
+        null
+    }
+
+
+    if (
+      remoteAudio
+    ) {
+
+      remoteAudio
+        .srcObject =
+          null
+    }
+
+
+    if (
+      audioContext &&
+      audioContext.state !==
+        'closed'
+    ) {
+
+      audioContext
+        .suspend()
+    }
+
+
+    if (
+      status
+    ) {
+
+      status
+        .textContent =
+          'マイクを押してね🍸'
+    }
+
+
+    if (
+      keiState
+    ) {
+
+      keiState
+        .textContent =
+          '待ってるよ'
+    }
+
+
+    isKeiSpeaking =
+      false
+
+    currentMouth =
+      ''
+
+    setMouth(
+      'close'
+    )
+
+
+    scheduleBlink()
+
+
+    if (
+      voiceButton
+    ) {
+
+      voiceButton
+        .disabled =
+          false
+    }
+
+
+    if (
+      stopButton
+    ) {
+
+      stopButton
+        .disabled =
+          true
+    }
+  }
+
+
+  voiceButton
+    ?.addEventListener(
+      'click',
+      startVoice
+    )
+
+
+  stopButton
+    ?.addEventListener(
+      'click',
+      stopVoice
+    )
+
+
+  window
+    .addEventListener(
+      'beforeunload',
+      () => {
+
+        stopBlinking()
+      }
+    )
+
+
+  preloadAvatarImages()
+
+  initializeUser()
+</script>
+
+
+<style>
+
+.voice-page {
+
+  min-height:
+    100vh;
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  padding:
+    20px;
+
+  background:
+    radial-gradient(
+      circle at center,
+      #221611,
+      #080504 72%
+    );
+
+  color:
+    white;
 }
+
+
+.bar-card {
+
+  width:
+    min(
+      94vw,
+      620px
+    );
+
+  padding:
+    28px 24px 32px;
+
+  text-align:
+    center;
+
+  border:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      .15
+    );
+
+  border-radius:
+    22px;
+
+  background:
+    rgba(
+      10,
+      5,
+      3,
+      .82
+    );
+
+  box-shadow:
+    0
+    20px
+    70px
+    rgba(
+      0,
+      0,
+      0,
+      .45
+    );
+
+  overflow:
+    hidden;
+}
+
+
+.title {
+
+  margin-bottom:
+    8px;
+
+  font-size:
+    26px;
+
+  font-weight:
+    bold;
+
+  letter-spacing:
+    .06em;
+}
+
+
+.customer-name {
+
+  margin-bottom:
+    12px;
+
+  font-size:
+    13px;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .58
+    );
+}
+
+
+.status {
+
+  min-height:
+    24px;
+
+  margin-bottom:
+    16px;
+
+  font-size:
+    14px;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .72
+    );
+}
+
+
+/* =========================
+   けい＋バックバー
+   ========================= */
+
+.kei-area {
+
+  position:
+    relative;
+
+  min-height:
+    430px;
+
+  margin-bottom:
+    24px;
+
+  display:
+    flex;
+
+  align-items:
+    flex-end;
+
+  justify-content:
+    center;
+
+  overflow:
+    hidden;
+
+  border-radius:
+    18px;
+
+  background:
+    #1a120f;
+
+  box-shadow:
+    inset
+    0
+    0
+    40px
+    rgba(
+      0,
+      0,
+      0,
+      .35
+    );
+}
+
+
+.kei-area__bg {
+
+  position:
+    absolute;
+
+  inset:
+    0;
+
+  background-image:
+    url('/backbar.jpg');
+
+  background-size:
+    cover;
+
+  background-position:
+    center;
+
+  transform:
+    scale(1.03);
+
+  filter:
+    saturate(.92)
+    brightness(.88);
+}
+
+
+.kei-area__overlay {
+
+  position:
+    absolute;
+
+  inset:
+    0;
+
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(
+        20,
+        10,
+        5,
+        .10
+      ) 0%,
+
+      rgba(
+        20,
+        10,
+        5,
+        .15
+      ) 42%,
+
+      rgba(
+        10,
+        5,
+        3,
+        .48
+      ) 100%
+    );
+}
+
+
+.kei-area__inner {
+
+  position:
+    relative;
+
+  z-index:
+    2;
+
+  width:
+    100%;
+
+  min-height:
+    430px;
+
+  display:
+    flex;
+
+  flex-direction:
+    column;
+
+  align-items:
+    center;
+
+  justify-content:
+    flex-end;
+
+  padding:
+    16px 12px 14px;
+}
+
+
+.kei-avatar {
+
+  display:
+    block;
+
+  width:
+    min(
+      88vw,
+      430px
+    );
+
+  max-height:
+    400px;
+
+  height:
+    auto;
+
+  margin:
+    0 auto 8px;
+
+  object-fit:
+    contain;
+
+  object-position:
+    center bottom;
+
+  filter:
+    drop-shadow(
+      0
+      15px
+      22px
+      rgba(
+        0,
+        0,
+        0,
+        .42
+      )
+    );
+
+  user-select:
+    none;
+
+  -webkit-user-drag:
+    none;
+}
+
+
+.kei-state {
+
+  position:
+    relative;
+
+  z-index:
+    3;
+
+  min-height:
+    20px;
+
+  padding:
+    5px 12px;
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(
+      0,
+      0,
+      0,
+      .28
+    );
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      .88
+    );
+
+  font-size:
+    14px;
+
+  backdrop-filter:
+    blur(5px);
+}
+
+
+.voice-button,
+.stop-button {
+
+  width:
+    100%;
+
+  padding:
+    15px 20px;
+
+  border:
+    none;
+
+  border-radius:
+    12px;
+
+  font-size:
+    16px;
+
+  cursor:
+    pointer;
+}
+
+
+.voice-button {
+
+  margin-bottom:
+    12px;
+
+  background:
+    #f6eee7;
+
+  color:
+    #24120d;
+}
+
+
+.voice-button:hover {
+
+  opacity:
+    .92;
+}
+
+
+.voice-button:disabled {
+
+  opacity:
+    .45;
+
+  cursor:
+    default;
+}
+
+
+.stop-button {
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      .08
+    );
+
+  color:
+    white;
+
+  border:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      .18
+    );
+}
+
+
+.stop-button:disabled {
+
+  opacity:
+    .35;
+
+  cursor:
+    default;
+}
+
+
+/* =========================
+   スマホ
+   ========================= */
+
+@media (
+  max-width: 640px
+) {
+
+  .voice-page {
+
+    padding:
+      8px;
+  }
+
+
+  .bar-card {
+
+    width:
+      100%;
+
+    padding:
+      20px 12px 24px;
+  }
+
+
+  .kei-area {
+
+    min-height:
+      340px;
+
+    border-radius:
+      15px;
+  }
+
+
+  .kei-area__inner {
+
+    min-height:
+      340px;
+
+    padding:
+      12px 8px 12px;
+  }
+
+
+  .kei-area__bg {
+
+    background-position:
+      center center;
+  }
+
+
+  .kei-avatar {
+
+    width:
+      min(
+        94vw,
+        330px
+      );
+
+    max-height:
+      310px;
+  }
+
+
+  .title {
+
+    font-size:
+      23px;
+  }
+}
+
+</style>
