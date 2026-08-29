@@ -5,7 +5,10 @@ import Layout from '../layouts/Layout.astro'
 <Layout title="けいのBAR - Voice">
   <main class="voice-page">
 
-    <!-- 上部ナビ -->
+    <!-- =========================
+         上部ナビ
+         ========================= -->
+
     <div class="voice-topbar">
 
       <a
@@ -37,9 +40,14 @@ import Layout from '../layouts/Layout.astro'
     </div>
 
 
+    <!-- =========================
+         BAR本体
+         ========================= -->
+
     <section class="bar-card">
 
-      <!-- 呼び名＋状態 -->
+      <!-- 呼び名＋ステータス -->
+
       <div class="voice-meta">
 
         <span
@@ -62,12 +70,13 @@ import Layout from '../layouts/Layout.astro'
       <!-- =========================
            BARシーン
            ========================= -->
+
       <div class="kei-area">
 
         <!-- バックバー -->
         <div class="kei-area__bg"></div>
 
-        <!-- 背景の暗さ調整 -->
+        <!-- 背景の明暗調整 -->
         <div class="kei-area__overlay"></div>
 
 
@@ -92,7 +101,10 @@ import Layout from '../layouts/Layout.astro'
         />
 
 
-        <!-- 状態表示 -->
+        <!--
+          最初の待機中だけ表示。
+          会話を開始したら消える。
+        -->
         <div
           id="kei-state"
           class="kei-state"
@@ -104,7 +116,7 @@ import Layout from '../layouts/Layout.astro'
 
 
       <!-- =========================
-           ボタン
+           音声ボタン
            ========================= -->
 
       <button
@@ -124,6 +136,7 @@ import Layout from '../layouts/Layout.astro'
       >
         会話を終了
       </button>
+
 
       <audio
         id="remote-audio"
@@ -154,6 +167,14 @@ import Layout from '../layouts/Layout.astro'
   let loginDisplayName = ''
   let memory = ''
 
+  /*
+   * 一度でも会話を始めたか
+   *
+   * 「待ってるよ」は
+   * 初回待機中だけ表示する。
+   */
+  let conversationStarted = false
+
 
   /*
    * =========================
@@ -179,6 +200,7 @@ import Layout from '../layouts/Layout.astro'
 
   let blinkTimer = null
   let blinkReturnTimer = null
+
   let isKeiSpeaking = false
   let isBlinking = false
 
@@ -195,7 +217,7 @@ import Layout from '../layouts/Layout.astro'
 
   /*
    * =========================
-   * 画像
+   * キャラ画像
    * =========================
    */
 
@@ -277,14 +299,34 @@ import Layout from '../layouts/Layout.astro'
       SMALL_OPEN_SRC,
       OPEN_SRC,
       BLINK_SRC,
-    ].forEach((src) => {
+    ].forEach(
+      (src) => {
 
-      const image =
-        new Image()
+        const image =
+          new Image()
 
-      image.src =
-        src
-    })
+        image.src =
+          src
+      }
+    )
+  }
+
+
+  /*
+   * =========================
+   * 画像上の状態表示
+   * =========================
+   */
+
+  function setKeiState(text = '') {
+
+    if (!keiState) {
+      return
+    }
+
+
+    keiState.textContent =
+      text
   }
 
 
@@ -309,7 +351,6 @@ import Layout from '../layouts/Layout.astro'
     if (
       currentMouth === type
     ) {
-
       return
     }
 
@@ -364,6 +405,10 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
+    /*
+     * 約4.5〜8.5秒の
+     * ランダム間隔
+     */
     const delay =
       4500 +
       Math.random() *
@@ -516,6 +561,7 @@ import Layout from '../layouts/Layout.astro'
         // ignore
       }
 
+
       remoteAudioSource =
         null
     }
@@ -580,6 +626,7 @@ import Layout from '../layouts/Layout.astro'
 
         // ignore
       }
+
 
       remoteAudioSource =
         null
@@ -696,6 +743,9 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
+      /*
+       * 実際に音が出ているか
+       */
       if (
         rms >= 0.010
       ) {
@@ -718,6 +768,10 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * 口画像は90ms以上
+       * 間隔を空ける
+       */
       if (
         now -
         lastMouthChange >
@@ -728,6 +782,9 @@ import Layout from '../layouts/Layout.astro'
           currentMouth
 
 
+        /*
+         * 無音
+         */
         if (
           rms < 0.010
         ) {
@@ -749,6 +806,9 @@ import Layout from '../layouts/Layout.astro'
             true
 
 
+          /*
+           * 小さい声
+           */
           if (
             rms < 0.028
           ) {
@@ -757,6 +817,9 @@ import Layout from '../layouts/Layout.astro'
               'small'
 
 
+          /*
+           * 普通
+           */
           } else if (
             rms < 0.060
           ) {
@@ -768,6 +831,9 @@ import Layout from '../layouts/Layout.astro'
                 : 'open'
 
 
+          /*
+           * 大きめ
+           */
           } else {
 
             nextMouth =
@@ -826,6 +892,9 @@ import Layout from '../layouts/Layout.astro'
           .getUser()
 
 
+      /*
+       * 未ログイン
+       */
       if (!user) {
 
         window.location.href =
@@ -835,6 +904,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * Google側の名前
+       */
       loginDisplayName =
         user
           .user_metadata
@@ -850,6 +922,9 @@ import Layout from '../layouts/Layout.astro'
         'ログイン中'
 
 
+      /*
+       * けいのBARプロフィール
+       */
       const {
         data: profile,
         error,
@@ -875,6 +950,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * けいが呼ぶ名前
+       */
       if (
         profile?.display_name &&
         profile
@@ -906,6 +984,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * 長期記憶
+       */
       if (
         profile?.memory
       ) {
@@ -915,6 +996,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * 呼び名
+       */
       if (
         customerName
       ) {
@@ -925,6 +1009,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * ログイン中表示
+       */
       if (
         loginName
       ) {
@@ -935,6 +1022,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
+      /*
+       * 初期待機
+       */
       if (
         status
       ) {
@@ -945,14 +1035,9 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      if (
-        keiState
-      ) {
-
-        keiState
-          .textContent =
-            '待ってるよ'
-      }
+      setKeiState(
+        '待ってるよ'
+      )
 
 
       currentMouth =
@@ -1106,6 +1191,9 @@ import Layout from '../layouts/Layout.astro'
         : ''
 
 
+    /*
+     * 検索語なし
+     */
     if (!query) {
 
       dataChannel.send(
@@ -1139,6 +1227,9 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
+    /*
+     * 状態表示は上だけ
+     */
     if (
       status
     ) {
@@ -1148,13 +1239,7 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
-    if (
-      keiState
-    ) {
-
-      keiState.textContent =
-        '調べてるよ…'
-    }
+    setKeiState('')
 
 
     try {
@@ -1258,15 +1343,6 @@ URLは読み上げないでください。
       }
 
 
-      if (
-        keiState
-      ) {
-
-        keiState.textContent =
-          'ちょっと待ってね…'
-      }
-
-
     } catch (
       error
     ) {
@@ -1327,6 +1403,19 @@ Web検索がうまくいきませんでした。
 
     try {
 
+      /*
+       * ここから会話開始。
+       *
+       * 「待ってるよ」は
+       * この瞬間に消す。
+       */
+      conversationStarted =
+        true
+
+
+      setKeiState('')
+
+
       handledToolCalls
         .clear()
 
@@ -1347,17 +1436,7 @@ Web検索がうまくいきませんでした。
 
         status
           .textContent =
-            '接続しています…'
-      }
-
-
-      if (
-        keiState
-      ) {
-
-        keiState
-          .textContent =
-            'ちょっと待ってね'
+            'つないでるよ…'
       }
 
 
@@ -1369,6 +1448,9 @@ Web検索がうまくいきませんでした。
       )
 
 
+      /*
+       * Realtime token
+       */
       const tokenResponse =
         await fetch(
           '/api/realtime',
@@ -1431,10 +1513,16 @@ Web検索がうまくいきませんでした。
       }
 
 
+      /*
+       * WebRTC
+       */
       peerConnection =
         new RTCPeerConnection()
 
 
+      /*
+       * けいの音声
+       */
       if (
         remoteAudio
       ) {
@@ -1483,6 +1571,9 @@ Web検索がうまくいきませんでした。
       }
 
 
+      /*
+       * お客様マイク
+       */
       localStream =
         await navigator
           .mediaDevices
@@ -1517,6 +1608,9 @@ Web検索がうまくいきませんでした。
         )
 
 
+      /*
+       * DataChannel
+       */
       dataChannel =
         peerConnection
           .createDataChannel(
@@ -1528,6 +1622,13 @@ Web検索がうまくいきませんでした。
         .onopen =
           () => {
 
+            /*
+             * 会話中なので
+             * 画像上は何も出さない
+             */
+            setKeiState('')
+
+
             if (
               status
             ) {
@@ -1535,16 +1636,6 @@ Web検索がうまくいきませんでした。
               status
                 .textContent =
                   'つながったよ🎙️'
-            }
-
-
-            if (
-              keiState
-            ) {
-
-              keiState
-                .textContent =
-                  'いらっしゃいませ'
             }
 
 
@@ -1558,6 +1649,9 @@ Web検索がうまくいきませんでした。
             }
 
 
+            /*
+             * 最初の挨拶
+             */
             dataChannel
               .send(
                 JSON.stringify({
@@ -1638,14 +1732,10 @@ Web検索がうまくいきませんでした。
                 }
 
 
-                if (
-                  keiState
-                ) {
-
-                  keiState
-                    .textContent =
-                      'うんうん…'
-                }
+                /*
+                 * 画像上は何も出さない
+                 */
+                setKeiState('')
               }
 
 
@@ -1667,14 +1757,7 @@ Web検索がうまくいきませんでした。
                 }
 
 
-                if (
-                  keiState
-                ) {
-
-                  keiState
-                    .textContent =
-                      'ちょっと考えてる…'
-                }
+                setKeiState('')
               }
 
 
@@ -1693,6 +1776,10 @@ Web検索がうまくいきませんでした。
                   true
 
 
+                /*
+                 * 上も画像上も
+                 * 余計な表示をしない
+                 */
                 if (
                   status
                 ) {
@@ -1703,14 +1790,7 @@ Web検索がうまくいきませんでした。
                 }
 
 
-                if (
-                  keiState
-                ) {
-
-                  keiState
-                    .textContent =
-                      ''
-                }
+                setKeiState('')
               }
 
 
@@ -1760,6 +1840,10 @@ Web検索がうまくいきませんでした。
                   !hasFunctionCall
                 ) {
 
+                  /*
+                   * 会話開始後は
+                   * 「待ってるよ」に戻さない。
+                   */
                   if (
                     status
                   ) {
@@ -1770,14 +1854,7 @@ Web検索がうまくいきませんでした。
                   }
 
 
-                  if (
-                    keiState
-                  ) {
-
-                    keiState
-                      .textContent =
-                        '待ってるよ'
-                  }
+                  setKeiState('')
                 }
               }
 
@@ -1806,14 +1883,7 @@ Web検索がうまくいきませんでした。
                 }
 
 
-                if (
-                  keiState
-                ) {
-
-                  keiState
-                    .textContent =
-                      'ごめん💦'
-                }
+                setKeiState('')
               }
 
 
@@ -1830,8 +1900,11 @@ Web検索がうまくいきませんでした。
 
 
       /*
+       * =========================
        * SDP
+       * =========================
        */
+
       const offer =
         await peerConnection
           .createOffer()
@@ -1913,14 +1986,7 @@ Web検索がうまくいきませんでした。
       }
 
 
-      if (
-        keiState
-      ) {
-
-        keiState
-          .textContent =
-            'ごめん💦'
-      }
+      setKeiState('')
 
 
       stopVoice()
@@ -1985,6 +2051,7 @@ Web検索がうまくいきませんでした。
           }
         )
 
+
       localStream =
         null
     }
@@ -2021,13 +2088,23 @@ Web検索がうまくいきませんでした。
     }
 
 
+    /*
+     * 一度会話を始めた後は
+     * 「待ってるよ」は戻さない。
+     *
+     * ページを開いた直後だけ出る。
+     */
     if (
-      keiState
+      conversationStarted
     ) {
 
-      keiState
-        .textContent =
-          '待ってるよ'
+      setKeiState('')
+
+    } else {
+
+      setKeiState(
+        '待ってるよ'
+      )
     }
 
 
@@ -2308,8 +2385,7 @@ Web検索がうまくいきませんでした。
     pointer;
 
   transition:
-    background .15s ease,
-    opacity .15s ease;
+    background .15s ease;
 }
 
 
@@ -2419,19 +2495,22 @@ Web検索がうまくいきませんでした。
 .customer-name {
 
   font-weight:
-    600;
+    700;
 
   color:
     rgba(
       255,
       255,
       255,
-      .90
+      .94
     );
 }
 
 
 .status {
+
+  min-width:
+    0;
 
   color:
     rgba(
@@ -2452,20 +2531,11 @@ Web検索がうまくいきませんでした。
   position:
     relative;
 
-  min-height:
+  height:
     430px;
 
   margin-bottom:
     24px;
-
-  display:
-    flex;
-
-  align-items:
-    flex-end;
-
-  justify-content:
-    center;
 
   overflow:
     hidden;
@@ -2490,7 +2560,9 @@ Web検索がうまくいきませんでした。
 }
 
 
-/* バックバー */
+/* =========================
+   バックバー
+   ========================= */
 
 .kei-area__bg {
 
@@ -2509,8 +2581,12 @@ Web検索がうまくいきませんでした。
   background-size:
     cover;
 
+  /*
+   * 背景自体も少し上へ。
+   * 棚が見えやすくなる。
+   */
   background-position:
-    center 44%;
+    center 38%;
 
   transform:
     scale(1.03);
@@ -2521,7 +2597,9 @@ Web検索がうまくいきませんでした。
 }
 
 
-/* 背景調整 */
+/* =========================
+   背景の明暗
+   ========================= */
 
 .kei-area__overlay {
 
@@ -2542,23 +2620,46 @@ Web検索がうまくいきませんでした。
         20,
         10,
         5,
-        .08
+        .06
       ) 0%,
 
       rgba(
         20,
         10,
         5,
-        .12
-      ) 45%,
+        .10
+      ) 48%,
 
       rgba(
         10,
         5,
         3,
-        .28
+        .20
       ) 100%
     );
+
+  pointer-events:
+    none;
+}
+
+
+/* =========================
+   けい用レイヤー
+   ========================= */
+
+.kei-area__inner {
+
+  position:
+    absolute;
+
+  inset:
+    0;
+
+  z-index:
+    2;
+
+  pointer-events:
+    none;
 }
 
 
@@ -2566,56 +2667,44 @@ Web検索がうまくいきませんでした。
    けい
    ========================= */
 
-.kei-area__inner {
-
-  position:
-    relative;
-
-  z-index:
-    2;
-
-  width:
-    100%;
-
-  min-height:
-    430px;
-
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  align-items:
-    center;
-
-  justify-content:
-    flex-end;
-
-  padding:
-    16px 12px 0;
-}
-
-
 .kei-avatar {
 
-  display:
-    block;
+  position:
+    absolute;
+
+  /*
+   * 中央配置
+   */
+  left:
+    50%;
+
+  /*
+   * ここを上げた。
+   *
+   * 以前：
+   * 下端に合わせて
+   * translateY(+20〜25px)
+   *
+   * 今回：
+   * bottom 55px
+   *
+   * なので人物全体が
+   * 明確に上へ移動する。
+   */
+  bottom:
+    55px;
 
   width:
-    min(
-      88vw,
-      430px
-    );
+    430px;
+
+  max-width:
+    86%;
 
   max-height:
-    405px;
+    390px;
 
   height:
     auto;
-
-  margin:
-    0 auto;
 
   object-fit:
     contain;
@@ -2624,7 +2713,7 @@ Web検索がうまくいきませんでした。
     center bottom;
 
   transform:
-    translateY(25px);
+    translateX(-50%);
 
   filter:
     drop-shadow(
@@ -2655,29 +2744,57 @@ Web検索がうまくいきませんでした。
    ========================= */
 
 .kei-counter-front {
-  position: absolute;
 
-  left: 0;
-  bottom: 0;
+  position:
+    absolute;
 
-  width: 100%;
-  height: 135px;
+  z-index:
+    5;
 
-  z-index: 5;
+  left:
+    0;
 
-  object-fit: cover;
-  object-position: top center;
+  /*
+   * カウンターそのものを
+   * 30px上へ持ち上げる
+   */
+  bottom:
+    30px;
 
-  pointer-events: none;
+  width:
+    100%;
 
-  user-select: none;
+  /*
+   * 元画像全部を表示すると
+   * けいが埋もれるので、
+   * 天板付近だけを使う。
+   */
+  height:
+    95px;
 
-  -webkit-user-drag: none;
+  object-fit:
+    cover;
+
+  /*
+   * 元画像の上端
+   * ＝カウンター天板側を使用
+   */
+  object-position:
+    top center;
+
+  pointer-events:
+    none;
+
+  user-select:
+    none;
+
+  -webkit-user-drag:
+    none;
 }
 
 
 /* =========================
-   状態表示
+   初期待機表示
    ========================= */
 
 .kei-state {
@@ -2691,8 +2808,11 @@ Web検索がうまくいきませんでした。
   left:
     50%;
 
+  /*
+   * カウンターの少し上
+   */
   bottom:
-    12px;
+    39px;
 
   transform:
     translateX(-50%);
@@ -2711,7 +2831,7 @@ Web検索がうまくいきませんでした。
       0,
       0,
       0,
-      .42
+      .54
     );
 
   color:
@@ -2719,7 +2839,7 @@ Web検索がうまくいきませんでした。
       255,
       255,
       255,
-      .92
+      .94
     );
 
   font-size:
@@ -2741,6 +2861,17 @@ Web検索がうまくいきませんでした。
       0,
       .25
     );
+}
+
+
+/*
+ * 中身が空なら
+ * 要素そのものを消す。
+ */
+.kei-state:empty {
+
+  display:
+    none;
 }
 
 
@@ -2930,7 +3061,7 @@ Web検索がうまくいきませんでした。
 
   .kei-area {
 
-    min-height:
+    height:
       340px;
 
     border-radius:
@@ -2938,50 +3069,51 @@ Web検索がうまくいきませんでした。
   }
 
 
-  .kei-area__inner {
-
-    min-height:
-      340px;
-
-    padding:
-      12px 8px 0;
-  }
-
-
   .kei-area__bg {
 
     background-position:
-      center 45%;
+      center 38%;
   }
 
 
+  /*
+   * スマホでも
+   * 人物を上に。
+   */
   .kei-avatar {
 
+    bottom:
+      45px;
+
     width:
-      min(
-        94vw,
-        330px
-      );
+      330px;
+
+    max-width:
+      88%;
 
     max-height:
-      320px;
-
-    transform:
-      translateY(5px);
+      310px;
   }
 
 
+  /*
+   * 前景カウンターも
+   * 少し上げる
+   */
   .kei-counter-front {
 
-    width:
-      100%;
+    bottom:
+      22px;
+
+    height:
+      76px;
   }
 
 
   .kei-state {
 
     bottom:
-      8px;
+      28px;
 
     font-size:
       13px;
