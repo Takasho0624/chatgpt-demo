@@ -177,7 +177,7 @@ import Layout from '../layouts/Layout.astro'
 
   /*
    * 同じ文字起こしイベントを
-   * 二重保存しないためのSet
+   * 二重保存しないため
    */
   const savedTranscriptKeys =
     new Set()
@@ -309,6 +309,84 @@ import Layout from '../layouts/Layout.astro'
 
   /*
    * =========================
+   * 現在の日本時間
+   * =========================
+   */
+
+  function getJapanTimeInfo() {
+
+    const now =
+      new Date()
+
+
+    const dateTimeText =
+      new Intl.DateTimeFormat(
+        'ja-JP',
+        {
+          timeZone:
+            'Asia/Tokyo',
+
+          year:
+            'numeric',
+
+          month:
+            'long',
+
+          day:
+            'numeric',
+
+          weekday:
+            'short',
+
+          hour:
+            '2-digit',
+
+          minute:
+            '2-digit',
+
+          hourCycle:
+            'h23',
+        }
+      ).format(now)
+
+
+    const hourParts =
+      new Intl.DateTimeFormat(
+        'ja-JP',
+        {
+          timeZone:
+            'Asia/Tokyo',
+
+          hour:
+            'numeric',
+
+          hourCycle:
+            'h23',
+        }
+      ).formatToParts(now)
+
+
+    const hour =
+      Number(
+        hourParts.find(
+          part =>
+            part.type ===
+            'hour'
+        )?.value || '0'
+      )
+
+
+    return {
+      text:
+        dateTimeText,
+
+      hour,
+    }
+  }
+
+
+  /*
+   * =========================
    * VOICEセッションID生成
    * =========================
    */
@@ -356,8 +434,6 @@ import Layout from '../layouts/Layout.astro'
 
 
     /*
-     * 同じ確定イベントが
-     * 複数形式で届いた場合の
      * 二重保存防止
      */
     if (
@@ -406,10 +482,6 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
-        /*
-         * 保存失敗時は
-         * 再試行可能にする
-         */
         if (uniqueKey) {
 
           savedTranscriptKeys
@@ -913,9 +985,6 @@ import Layout from '../layouts/Layout.astro'
         rms >= 0.010
       ) {
 
-        /*
-         * 音が出た瞬間
-         */
         isKeiSpeaking =
           true
 
@@ -925,8 +994,8 @@ import Layout from '../layouts/Layout.astro'
 
 
         /*
-         * けいが実際に喋っている間は
-         * 「話しかけてね」は絶対出さない
+         * けいが喋っている間は
+         * 上の状態文字を消す
          */
         if (
           conversationStarted &&
@@ -944,8 +1013,7 @@ import Layout from '../layouts/Layout.astro'
 
         /*
          * 約1.5秒程度
-         * 無音が続いたら
-         * 実際の音声終了と判断
+         * 無音が続いてから終了判定
          */
         if (
           silenceFrames > 90
@@ -961,8 +1029,7 @@ import Layout from '../layouts/Layout.astro'
 
           /*
            * response.doneではなく
-           * 実際の音声終了時だけ
-           * 「話しかけてね」に戻す
+           * 実際の音声終了時に戻す
            */
           if (
             wasSpeaking &&
@@ -1247,9 +1314,6 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      /*
-       * 初回だけ
-       */
       conversationStarted =
         false
 
@@ -1446,9 +1510,6 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
-    /*
-     * 上の状態だけ表示
-     */
     if (
       status
     ) {
@@ -1630,15 +1691,14 @@ Web検索がうまくいきませんでした。
 
 
       /*
-       * 前回の重複防止情報を消す
+       * 二重保存情報をリセット
        */
       savedTranscriptKeys
         .clear()
 
 
       /*
-       * 会話開始。
-       * 「待ってるよ」はここで消す。
+       * 会話開始
        */
       conversationStarted =
         true
@@ -1680,8 +1740,21 @@ Web検索がうまくいきませんでした。
 
 
       /*
-       * Realtime token
+       * =========================
+       * 現在の日本時間を取得
+       * =========================
        */
+
+      const japanTime =
+        getJapanTimeInfo()
+
+
+      /*
+       * =========================
+       * Realtime token
+       * =========================
+       */
+
       const tokenResponse =
         await fetch(
           '/api/realtime',
@@ -1696,8 +1769,20 @@ Web検索がうまくいきませんでした。
 
             body:
               JSON.stringify({
+
                 displayName,
+
                 memory,
+
+                /*
+                 * Realtimeのけいにも
+                 * セッション開始時刻を渡す
+                 */
+                currentTime:
+                  japanTime.text,
+
+                currentHour:
+                  japanTime.hour,
               }),
           }
         )
@@ -1745,8 +1830,11 @@ Web検索がうまくいきませんでした。
 
 
       /*
+       * =========================
        * WebRTC
+       * =========================
        */
+
       peerConnection =
         new RTCPeerConnection()
 
@@ -1807,8 +1895,11 @@ Web検索がうまくいきませんでした。
 
 
       /*
+       * =========================
        * お客様マイク
+       * =========================
        */
+
       localStream =
         await navigator
           .mediaDevices
@@ -1844,8 +1935,11 @@ Web検索がうまくいきませんでした。
 
 
       /*
+       * =========================
        * DataChannel
+       * =========================
        */
+
       dataChannel =
         peerConnection
           .createDataChannel(
@@ -1857,10 +1951,6 @@ Web検索がうまくいきませんでした。
         .onopen =
           () => {
 
-            /*
-             * 会話開始後は
-             * 画像内表示なし
-             */
             setKeiState('')
 
 
@@ -1885,8 +1975,18 @@ Web検索がうまくいきませんでした。
 
 
             /*
+             * =========================
              * 最初の挨拶
+             *
+             * 時刻を必ず確認してから
+             * 自然に挨拶する
+             * =========================
              */
+
+            const openingJapanTime =
+              getJapanTimeInfo()
+
+
             dataChannel
               .send(
                 JSON.stringify({
@@ -1897,6 +1997,37 @@ Web検索がうまくいきませんでした。
 
                     instructions: `
 お客様が来店しました。
+
+現在の日本時間は
+「${openingJapanTime.text}」
+です。
+
+まず必ず現在時刻を認識したうえで、
+その時間帯に自然に合った挨拶をしてください。
+
+現在時刻そのものを
+機械的に読み上げる必要はありません。
+
+朝なら朝らしく、
+昼なら昼らしく、
+夕方なら夕方らしく、
+夜なら夜らしく、
+深夜なら深夜らしく、
+自然に反応してください。
+
+例えば深夜であれば、
+会話の雰囲気に合う場合には、
+
+「こんな時間まで起きてたんだね」
+
+「ずいぶん遅い時間だね」
+
+などのように、
+時間を踏まえた自然な一言を入れて構いません。
+
+ただし、
+毎回決まった文句を使わず、
+人間らしく自然に変えてください。
 
 自然に
 「いらっしゃいませ」
@@ -1915,6 +2046,10 @@ Web検索がうまくいきませんでした。
 
 「ゆっくり見ていってね」
 とは言わないでください。
+
+明るく元気すぎる挨拶にはせず、
+夜のオーセンティックなBARらしい、
+静かで柔らかい雰囲気を保ってください。
 
 挨拶は長くしないでください。
                     `.trim(),
@@ -1981,8 +2116,6 @@ Web検索がうまくいきませんでした。
               /*
                * =========================
                * けいの文字起こし確定
-               *
-               * 現行Realtimeイベント
                * =========================
                */
 
@@ -2016,14 +2149,8 @@ Web検索がうまくいきませんでした。
 
 
               /*
-               * =========================
-               * 旧形式イベントにも対応
-               *
-               * API側のイベント名差異が
-               * あっても保存できるようにする
-               * =========================
+               * 旧形式にも対応
                */
-
               if (
                 message.type ===
                 'response.audio_transcript.done'
@@ -2054,8 +2181,11 @@ Web検索がうまくいきませんでした。
 
 
               /*
+               * =========================
                * お客様が話し始めた
+               * =========================
                */
+
               if (
                 message.type ===
                 'input_audio_buffer.speech_started'
@@ -2076,8 +2206,11 @@ Web検索がうまくいきませんでした。
 
 
               /*
+               * =========================
                * お客様が話し終わった
+               * =========================
                */
+
               if (
                 message.type ===
                 'input_audio_buffer.speech_stopped'
@@ -2098,8 +2231,11 @@ Web検索がうまくいきませんでした。
 
 
               /*
+               * =========================
                * けいが話している
+               * =========================
                */
+
               if (
                 message.type ===
                   'response.audio.delta' ||
@@ -2112,10 +2248,6 @@ Web検索がうまくいきませんでした。
                   true
 
 
-                /*
-                 * けいが喋っている最中は
-                 * ステータス文字を消す
-                 */
                 if (
                   status
                 ) {
@@ -2131,8 +2263,11 @@ Web検索がうまくいきませんでした。
 
 
               /*
+               * =========================
                * Web検索
+               * =========================
                */
+
               if (
                 message.type ===
                   'response.function_call_arguments.done' &&
@@ -2151,17 +2286,11 @@ Web検索がうまくいきませんでした。
               /*
                * =========================
                * response.done
+               *
+               * 実際の音声終了より
+               * 先に来る場合があるので
+               * ステータスは変更しない
                * =========================
-               *
-               * response.done は
-               * 実際の音声再生より
-               * 先に来る場合がある。
-               *
-               * ここでは
-               * 「話しかけてね」に戻さない。
-               *
-               * 実際の音声波形が
-               * 無音になった時に戻す。
                */
 
               if (
@@ -2195,8 +2324,11 @@ Web検索がうまくいきませんでした。
 
 
               /*
+               * =========================
                * APIエラー
+               * =========================
                */
+
               if (
                 message.type ===
                 'error'
@@ -2425,7 +2557,7 @@ Web検索がうまくいきませんでした。
 
     /*
      * 一度会話した後は
-     * 待ってるよを戻さない
+     * 「待ってるよ」を戻さない
      */
     if (
       conversationStarted
@@ -2476,8 +2608,7 @@ Web検索がうまくいきませんでした。
 
 
     /*
-     * 次に話す時は
-     * 新しいsession_idを作る
+     * 次回は新しいVOICEセッション
      */
     currentVoiceSessionId =
       null
