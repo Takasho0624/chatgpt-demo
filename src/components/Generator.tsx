@@ -14,9 +14,13 @@ export default () => {
   const [currentSystemRoleSettings, setCurrentSystemRoleSettings] = createSignal('')
   const [systemRoleEditing, setSystemRoleEditing] = createSignal(false)
 
+  // 今回の画面に表示する会話
   const [messageList, setMessageList] = createSignal<ChatMessage[]>([])
+
+  // 過去ログ。画面には表示せず、文脈としてだけ使う
   const [hiddenHistory, setHiddenHistory] = createSignal<ChatMessage[]>([])
 
+  // 永続プロフィール
   const [profileName, setProfileName] = createSignal('')
   const [nameConfirmed, setNameConfirmed] = createSignal(false)
   const [profileMemory, setProfileMemory] = createSignal('')
@@ -123,19 +127,112 @@ export default () => {
   }
 
   // -------------------------
-  // 初回の呼び名確認
+  // 呼び名をプロフィールへ保存
   // -------------------------
 
-  const confirmNamePreference = async(content: string) => {
-    if (nameConfirmed())
-      return
+  const saveProfileName = async(name: string) => {
+    const cleanName = name
+      .replace(/^「|」$/g, '')
+      .replace(/^『|』$/g, '')
+      .trim()
 
+    if (!cleanName)
+      return false
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user)
+        return false
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          user_id: user.id,
+          display_name: cleanName,
+          name_confirmed: true,
+          memory: profileMemory() || null,
+          updated_at: new Date().toISOString(),
+        })
+
+      if (error) {
+        console.error('Failed to update name:', error)
+        return false
+      }
+
+      // この発言からすぐ新しい名前を使えるようにする
+      setProfileName(cleanName)
+      setNameConfirmed(true)
+
+      return true
+    }
+    catch (err) {
+      console.error('Failed to update name:', err)
+      return false
+    }
+  }
+
+  // -------------------------
+  // 呼び名の判定
+  // 初回確認にも、途中変更にも対応
+  // -------------------------
+
+  const updateNamePreference = async(content: string) => {
     const text = content.trim()
 
     if (!text)
-      return
+      return false
 
     let detectedName = ''
+
+    // ----------------------------------
+    // すでに名前が確定している場合
+    // 明示的な変更指示だけ拾う
+    // ----------------------------------
+
+    if (nameConfirmed()) {
+      const renamePatterns = [
+        /(?:これからは|今後は|今度から|次から|やっぱり)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:って呼んで|ってよんで|と呼んで|とよんで|で呼んで|でよんで)/,
+        /[「『]?([^」』、。！!？?\n]+?)[」』]?(?:って呼んで|ってよんで|と呼んで|とよんで|で呼んで|でよんで)/,
+        /(?:これからは|今後は|今度から|次から|やっぱり)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:でお願いします|でいいです|でいいよ|がいいです|がいいよ)/,
+      ]
+
+      for (const pattern of renamePatterns) {
+        const match = text.match(pattern)
+
+        if (match?.[1]) {
+          detectedName = match[1].trim()
+          break
+        }
+      }
+
+      // 「やっぱりショウくんで」など
+      if (!detectedName) {
+        const shortChangePatterns = [
+          /(?:やっぱり|これからは|今後は|今度から|次から)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:で|にして)$/,
+        ]
+
+        for (const pattern of shortChangePatterns) {
+          const match = text.match(pattern)
+
+          if (match?.[1]) {
+            detectedName = match[1].trim()
+            break
+          }
+        }
+      }
+
+      if (!detectedName)
+        return false
+
+      return await saveProfileName(detectedName)
+    }
+
+    // ----------------------------------
+    // 初回：Google名のままでよい場合
+    // ----------------------------------
 
     const keepCurrentPatterns = [
       /そのままで/,
@@ -143,20 +240,25 @@ export default () => {
       /それでいい/,
       /それでお願いします/,
       /今のままで/,
+      /その呼び方で/,
     ]
 
     if (keepCurrentPatterns.some(pattern => pattern.test(text))) {
       detectedName = profileName()
     }
 
+    // ----------------------------------
+    // 初回：本人が名前を指定
+    // ----------------------------------
+
     if (!detectedName) {
-      const patterns = [
+      const firstNamePatterns = [
         /(?:私の名前は|名前は|僕は|ぼくは|私は|わたしは)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:です|だよ|だ|といいます|と言います)/,
-        /[「『]?([^」』、。！!？?\n]+?)[」』]?(?:って呼んで|と呼んで|と呼んでください|で呼んで)/,
+        /[「『]?([^」』、。！!？?\n]+?)[」』]?(?:って呼んで|ってよんで|と呼んで|とよんで|と呼んでください|とよんでください|で呼んで|でよんで)/,
         /[「『]?([^」』、。！!？?\n]+?)[」』]?(?:でいいです|でいいよ|でお願いします|がいいです|がいいよ)/,
       ]
 
-      for (const pattern of patterns) {
+      for (const pattern of firstNamePatterns) {
         const match = text.match(pattern)
 
         if (match?.[1]) {
@@ -166,10 +268,15 @@ export default () => {
       }
     }
 
+    // 初回確認の直後なら、
+    // 「テスト太郎」「テスト太郎で」程度の短い返答も名前と判断
     if (!detectedName && text.length <= 30) {
-      let candidate = text
+      const candidate = text
         .replace(/^(じゃあ|では|えっと|うん|はい)[、,\s]*/g, '')
-        .replace(/(でお願いします|でいいです|でいいよ|で|と呼んで|って呼んで)$/g, '')
+        .replace(
+          /(でお願いします|でいいです|でいいよ|で|と呼んで|って呼んで|とよんで|ってよんで)$/,
+          '',
+        )
         .trim()
 
       if (
@@ -182,45 +289,9 @@ export default () => {
     }
 
     if (!detectedName)
-      return
+      return false
 
-    detectedName = detectedName
-      .replace(/^「|」$/g, '')
-      .replace(/^『|』$/g, '')
-      .trim()
-
-    if (!detectedName)
-      return
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user)
-        return
-
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          user_id: user.id,
-          display_name: detectedName,
-          name_confirmed: true,
-          memory: profileMemory() || null,
-          updated_at: new Date().toISOString(),
-        })
-
-      if (error) {
-        console.error('Failed to update name:', error)
-        return
-      }
-
-      setProfileName(detectedName)
-      setNameConfirmed(true)
-    }
-    catch (err) {
-      console.error('Failed to confirm name:', err)
-    }
+    return await saveProfileName(detectedName)
   }
 
   // -------------------------
@@ -249,6 +320,7 @@ export default () => {
       let confirmed = profile?.name_confirmed || false
       const memory = profile?.memory || ''
 
+      // 初回はGoogleアカウント名を仮の呼び名として保存
       if (!displayName) {
         displayName
           = user.user_metadata?.full_name
@@ -276,6 +348,8 @@ export default () => {
       setNameConfirmed(confirmed)
       setProfileMemory(memory)
 
+      // 過去ログは画面には表示しない
+      // 直近だけAIの文脈として裏で保持
       const { data: oldMessages, error: historyError } = await supabase
         .from('messages')
         .select('role, content, created_at')
@@ -398,7 +472,8 @@ export default () => {
 
     await saveMessage('user', inputValue)
 
-    await confirmNamePreference(inputValue)
+    // 初回確認・途中変更の両方に対応
+    await updateNamePreference(inputValue)
 
     await requestWithLatestMessage()
 
@@ -434,6 +509,7 @@ export default () => {
       const controller = new AbortController()
       setController(controller)
 
+      // 最初の自動挨拶はAIに渡さない
       const visibleMessages = messageList().filter((message, index) => {
         return index !== 0
       })
@@ -448,10 +524,13 @@ export default () => {
 
       let profileContext = ''
 
-if (nameConfirmed() && profileName()) {
-  profileContext +=
-    `このユーザーの希望する呼び名は「${formatDisplayName(profileName())}」。必ずこの呼び名で呼んでください。`
-}
+      // 現在の確定済み呼び名を最優先
+      if (nameConfirmed() && profileName()) {
+        profileContext +=
+          `このユーザーの現在の希望する呼び名は「${formatDisplayName(profileName())}」。`
+          + '以前の会話に別の呼び名が書かれていても無視し、必ず現在の呼び名を使ってください。'
+          + 'ユーザーが会話中に新しい呼び名を希望した場合は、その新しい呼び名を尊重してください。'
+      }
 
       if (profileMemory()) {
         profileContext +=
@@ -588,7 +667,8 @@ if (nameConfirmed() && profileName()) {
   }
 
   // -------------------------
-  // 新しい夜
+  // この会話をリセット
+  // 保存済みプロフィール・過去ログは消さない
   // -------------------------
 
   const clear = () => {
@@ -730,13 +810,13 @@ if (nameConfirmed() && profileName()) {
           </button>
 
           <button
-            title="新しい夜に戻る"
+            title="この会話をリセット"
             onClick={clear}
             disabled={systemRoleEditing()}
             gen-slate-btn
             class="flex-shrink-0"
           >
-            新しい夜に戻る
+            この会話をリセット
           </button>
         </div>
       </Show>
