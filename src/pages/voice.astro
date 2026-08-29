@@ -745,35 +745,92 @@ import Layout from '../layouts/Layout.astro'
 
 
       /*
+       * =========================
        * 実際にけいの音が
        * 出ているか
+       * =========================
        */
+
       if (
         rms >= 0.010
       ) {
 
+        /*
+         * 音が出た瞬間
+         */
         isKeiSpeaking =
           true
+
+
+        silenceFrames =
+          0
+
+
+        /*
+         * けいが実際に喋っている間は
+         * 「話しかけてね」は絶対出さない
+         */
+        if (
+          conversationStarted &&
+          status
+        ) {
+
+          status.textContent =
+            ''
+        }
 
       } else {
 
         silenceFrames++
 
 
+        /*
+         * 一瞬の無音ではなく
+         * 約12フレーム連続で
+         * 静かになったら
+         * 実際の音声が終わったと判断
+         */
         if (
-          silenceFrames > 7
+          silenceFrames > 12
         ) {
+
+          const wasSpeaking =
+            isKeiSpeaking
+
 
           isKeiSpeaking =
             false
+
+
+          /*
+           * =========================
+           * 重要
+           *
+           * Realtimeのresponse.doneではなく
+           * 実際の音声が終わった時だけ
+           * 「話しかけてね」に戻す
+           * =========================
+           */
+
+          if (
+            wasSpeaking &&
+            conversationStarted &&
+            status
+          ) {
+
+            status.textContent =
+              '話しかけてね🎙️'
+          }
         }
       }
 
 
       /*
-       * 画像の切替は
-       * 90ms以上空ける
+       * =========================
+       * 口画像切替
+       * =========================
        */
+
       if (
         now -
         lastMouthChange >
@@ -1774,8 +1831,8 @@ Web検索がうまくいきませんでした。
 
 
                 /*
-                 * 喋っている時は
-                 * 文字を出さない
+                 * けいが喋っている最中は
+                 * ステータス文字を消す
                  */
                 if (
                   status
@@ -1810,8 +1867,23 @@ Web検索がうまくいきませんでした。
 
 
               /*
-               * 返答終了
+               * =========================
+               * response.done
+               * =========================
+               *
+               * 重要：
+               *
+               * response.done は
+               * 実際の音声再生が終わるより
+               * 先に来る場合がある。
+               *
+               * だからここでは
+               * 「話しかけてね」に戻さない。
+               *
+               * 実際の音声波形が
+               * 無音になった時に戻す。
                */
+
               if (
                 message.type ===
                 'response.done'
@@ -1837,20 +1909,6 @@ Web検索がうまくいきませんでした。
                   !hasFunctionCall
                 ) {
 
-                  if (
-                    status
-                  ) {
-
-                    status
-                      .textContent =
-                        '話しかけてね🎙️'
-                  }
-
-
-                  /*
-                   * 待ってるよには
-                   * 戻さない
-                   */
                   setKeiState('')
                 }
               }
@@ -2666,11 +2724,6 @@ Web検索がうまくいきませんでした。
   left:
     50%;
 
-  /*
-   * 上げすぎない。
-   * カウンターの後ろに
-   * 自然に入る位置。
-   */
   bottom:
     18px;
 
@@ -2737,10 +2790,6 @@ Web検索がうまくいきませんでした。
   z-index:
     5;
 
-  /*
-   * 元画像は縦長なので
-   * 天板付近だけを切り出す。
-   */
   width:
     100%;
 
@@ -2750,11 +2799,6 @@ Web検索がうまくいきませんでした。
   object-fit:
     cover;
 
-  /*
-   * ここが重要。
-   * 元画像の約2/3付近にある
-   * 明るい木の天板を表示。
-   */
   object-position:
     center 66%;
 
@@ -3061,10 +3105,6 @@ Web検索がうまくいきませんでした。
   }
 
 
-  /*
-   * スマホも
-   * カウンターの天板を表示
-   */
   .kei-counter-front {
 
     height:
