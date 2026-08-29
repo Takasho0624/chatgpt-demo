@@ -62,6 +62,7 @@ import Layout from '../layouts/Layout.astro'
   </main>
 </Layout>
 
+
 <script>
   import { supabase } from '../utils/supabase'
 
@@ -72,6 +73,9 @@ import Layout from '../layouts/Layout.astro'
   let displayName = 'お客様'
   let memory = ''
 
+  /*
+   * リップシンク関係
+   */
   let audioContext = null
   let analyser = null
   let remoteAudioSource = null
@@ -80,6 +84,13 @@ import Layout from '../layouts/Layout.astro'
   let currentMouth = 'close'
   let lastMouthChange = 0
   let silenceFrames = 0
+
+  /*
+   * 同じFunction Callを
+   * 二重実行しないため
+   */
+  const handledToolCalls =
+    new Set()
 
 
   const CLOSED_SRC =
@@ -93,27 +104,45 @@ import Layout from '../layouts/Layout.astro'
 
 
   const voiceButton =
-    document.getElementById('voice-button')
+    document.getElementById(
+      'voice-button'
+    )
 
   const stopButton =
-    document.getElementById('stop-button')
+    document.getElementById(
+      'stop-button'
+    )
 
   const status =
-    document.getElementById('status')
+    document.getElementById(
+      'status'
+    )
 
   const keiState =
-    document.getElementById('kei-state')
+    document.getElementById(
+      'kei-state'
+    )
 
   const customerName =
-    document.getElementById('customer-name')
+    document.getElementById(
+      'customer-name'
+    )
 
   const remoteAudio =
-    document.getElementById('remote-audio')
+    document.getElementById(
+      'remote-audio'
+    )
 
   const keiAvatar =
-    document.getElementById('kei-avatar')
+    document.getElementById(
+      'kei-avatar'
+    )
 
 
+  /*
+   * 口パク画像を
+   * 先にブラウザへ読み込む
+   */
   function preloadAvatarImages() {
 
     [
@@ -131,9 +160,14 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * 口画像を変更
+   */
   function setMouth(type) {
 
-    if (!keiAvatar) return
+    if (!keiAvatar) {
+      return
+    }
 
     if (
       currentMouth === type
@@ -173,6 +207,9 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * リップシンク停止
+   */
   function stopRealLipSync() {
 
     if (
@@ -193,9 +230,13 @@ import Layout from '../layouts/Layout.astro'
     ) {
 
       try {
-        remoteAudioSource.disconnect()
+
+        remoteAudioSource
+          .disconnect()
+
       } catch (error) {
-        // ignore
+
+        // 何もしない
       }
 
       remoteAudioSource =
@@ -212,19 +253,27 @@ import Layout from '../layouts/Layout.astro'
     currentMouth =
       ''
 
-    setMouth('close')
+    setMouth(
+      'close'
+    )
   }
 
 
+  /*
+   * 実際のRealtime音声を解析して
+   * 口を動かす
+   */
   async function startRealLipSync(
     stream
   ) {
 
-    if (!stream) return
+    if (!stream) {
+      return
+    }
 
 
     /*
-     * 前回の解析が残っていたら停止
+     * 前の解析を停止
      */
     if (
       lipSyncFrame
@@ -244,9 +293,13 @@ import Layout from '../layouts/Layout.astro'
     ) {
 
       try {
-        remoteAudioSource.disconnect()
+
+        remoteAudioSource
+          .disconnect()
+
       } catch (error) {
-        // ignore
+
+        // 何もしない
       }
 
       remoteAudioSource =
@@ -260,7 +313,7 @@ import Layout from '../layouts/Layout.astro'
     if (
       !audioContext ||
       audioContext.state ===
-      'closed'
+        'closed'
     ) {
 
       audioContext =
@@ -275,7 +328,8 @@ import Layout from '../layouts/Layout.astro'
 
       try {
 
-        await audioContext.resume()
+        await audioContext
+          .resume()
 
       } catch (error) {
 
@@ -292,20 +346,16 @@ import Layout from '../layouts/Layout.astro'
         .createAnalyser()
 
 
-    /*
-     * 数字を大きくすると
-     * 音量変化を細かく見られる
-     */
     analyser.fftSize =
       512
 
 
     /*
-     * 口がガチャガチャしすぎないよう
      * 少し滑らかにする
      */
-    analyser.smoothingTimeConstant =
-      0.65
+    analyser
+      .smoothingTimeConstant =
+        0.68
 
 
     remoteAudioSource =
@@ -331,9 +381,7 @@ import Layout from '../layouts/Layout.astro'
       0
 
 
-    function animate(
-      now
-    ) {
+    function animate(now) {
 
       if (!analyser) {
         return
@@ -347,7 +395,7 @@ import Layout from '../layouts/Layout.astro'
 
 
       /*
-       * RMS = 実際の音量を計算
+       * RMS音量計算
        */
       let sum =
         0
@@ -379,13 +427,13 @@ import Layout from '../layouts/Layout.astro'
 
 
       /*
-       * 画像の変更頻度を制限
-       * 速すぎるとパカパカしすぎる
+       * あまり高速に画像を
+       * 切り替えない
        */
       if (
         now -
         lastMouthChange >
-        85
+        90
       ) {
 
         let nextMouth =
@@ -393,7 +441,7 @@ import Layout from '../layouts/Layout.astro'
 
 
         /*
-         * ほぼ無音
+         * 無音
          */
         if (
           rms < 0.010
@@ -404,7 +452,7 @@ import Layout from '../layouts/Layout.astro'
 
           /*
            * 一瞬の無音では
-           * 口を閉じない
+           * すぐ閉じない
            */
           if (
             silenceFrames > 4
@@ -421,39 +469,42 @@ import Layout from '../layouts/Layout.astro'
 
 
           /*
-           * 小さめの声
+           * 小さめの音
            */
           if (
-            rms < 0.025
+            rms < 0.028
           ) {
 
             nextMouth =
               'small'
 
           /*
-           * 普通の声
+           * 普通の音
            */
           } else if (
-            rms < 0.055
+            rms < 0.060
           ) {
 
             /*
-             * small と open を
-             * 少し混ぜると自然
+             * 大口ばかりに
+             * ならないようにする
              */
             nextMouth =
               Math.random() <
-              0.45
+              0.72
                 ? 'small'
                 : 'open'
 
           /*
-           * 大きめの声
+           * 大きな音
            */
           } else {
 
             nextMouth =
-              'open'
+              Math.random() <
+              0.42
+                ? 'small'
+                : 'open'
           }
         }
 
@@ -487,6 +538,10 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * Supabaseから
+   * ユーザー情報取得
+   */
   async function initializeUser() {
 
     try {
@@ -643,9 +698,326 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * Web検索Function Callを処理
+   */
+  async function handleWebSearch(
+    message
+  ) {
+
+    if (
+      !dataChannel ||
+      dataChannel.readyState !==
+        'open'
+    ) {
+
+      return
+    }
+
+
+    const callId =
+      message.call_id
+
+
+    if (
+      !callId
+    ) {
+
+      console.error(
+        'search_web: call_id がありません',
+        message
+      )
+
+      return
+    }
+
+
+    /*
+     * 二重実行防止
+     */
+    if (
+      handledToolCalls
+        .has(callId)
+    ) {
+
+      return
+    }
+
+
+    handledToolCalls
+      .add(callId)
+
+
+    let args = {}
+
+
+    try {
+
+      args =
+        JSON.parse(
+          message.arguments ||
+          '{}'
+        )
+
+    } catch (error) {
+
+      console.error(
+        'Tool arguments parse error:',
+        error
+      )
+    }
+
+
+    const query =
+      typeof args.query ===
+        'string'
+        ? args.query.trim()
+        : ''
+
+
+    /*
+     * 検索語がなければ
+     * エラーとしてRealtimeへ返す
+     */
+    if (!query) {
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'conversation.item.create',
+
+          item: {
+            type:
+              'function_call_output',
+
+            call_id:
+              callId,
+
+            output:
+              '検索キーワードが取得できませんでした。',
+          },
+        })
+      )
+
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'response.create',
+        })
+      )
+
+
+      return
+    }
+
+
+    /*
+     * 画面表示
+     */
+    if (status) {
+
+      status.textContent =
+        'Webで調べています…🌐'
+    }
+
+
+    if (keiState) {
+
+      keiState.textContent =
+        '🔎'
+    }
+
+
+    try {
+
+      /*
+       * さっき作った
+       * /api/web-search
+       * を呼ぶ
+       */
+      const response =
+        await fetch(
+          '/api/web-search',
+          {
+            method:
+              'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                query,
+              }),
+          }
+        )
+
+
+      const result =
+        await response
+          .json()
+
+
+      let answer =
+        ''
+
+
+      if (
+        response.ok &&
+        typeof result.answer ===
+          'string'
+      ) {
+
+        answer =
+          result.answer.trim()
+
+      } else {
+
+        answer =
+          'Web検索を試しましたが、今回は情報を取得できませんでした。'
+      }
+
+
+      /*
+       * Function Callの結果を
+       * Realtimeへ返す
+       */
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'conversation.item.create',
+
+          item: {
+            type:
+              'function_call_output',
+
+            call_id:
+              callId,
+
+            output:
+              answer,
+          },
+        })
+      )
+
+
+      /*
+       * 検索結果を使って
+       * けいに続きを喋らせる
+       */
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'response.create',
+
+          response: {
+            instructions: `
+search_web の検索結果が返ってきました。
+
+検索結果を踏まえて、
+お客様の元の質問に答えてください。
+
+検索結果をそのまま読み上げるのではなく、
+内容を理解したうえで、
+けい自身の自然な会話として説明してください。
+
+最初から長い前置きをせず、
+まず答えを自然に伝えてください。
+
+URLは読み上げないでください。
+
+検索結果に不確かな点がある場合は、
+断定しないでください。
+
+検索結果が取得できなかった場合は、
+そのことを自然に伝えてください。
+            `.trim(),
+          },
+        })
+      )
+
+
+      if (status) {
+
+        status.textContent =
+          'けいが確認しています…'
+      }
+
+
+      if (keiState) {
+
+        keiState.textContent =
+          '♪'
+      }
+
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        'Web search error:',
+        error
+      )
+
+
+      /*
+       * 検索失敗も
+       * Function outputとして返す
+       */
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'conversation.item.create',
+
+          item: {
+            type:
+              'function_call_output',
+
+            call_id:
+              callId,
+
+            output:
+              'Web検索中にエラーが発生し、最新情報を取得できませんでした。',
+          },
+        })
+      )
+
+
+      dataChannel.send(
+        JSON.stringify({
+          type:
+            'response.create',
+
+          response: {
+            instructions: `
+Web検索がうまくいきませんでした。
+
+知っているふりをせず、
+「ちょっと検索がうまくいかなかったみたい」
+など、
+自然な会話としてお客様に伝えてください。
+            `.trim(),
+          },
+        })
+      )
+    }
+  }
+
+
+  /*
+   * 音声開始
+   */
   async function startVoice() {
 
     try {
+
+      handledToolCalls
+        .clear()
+
 
       if (
         voiceButton
@@ -758,7 +1130,6 @@ import Layout from '../layouts/Layout.astro'
 
 
       /*
-       * OpenAIから届く
        * けいの音声
        */
       if (
@@ -803,9 +1174,7 @@ import Layout from '../layouts/Layout.astro'
 
 
               /*
-               * ここで
-               * 実際のけいの音声を
-               * 解析開始
+               * 実音声で口パク
                */
               await startRealLipSync(
                 remoteStream
@@ -815,7 +1184,7 @@ import Layout from '../layouts/Layout.astro'
 
 
       /*
-       * お客様のマイク
+       * お客様マイク
        */
       localStream =
         await navigator
@@ -852,7 +1221,7 @@ import Layout from '../layouts/Layout.astro'
 
 
       /*
-       * Realtimeイベント
+       * Realtime DataChannel
        */
       dataChannel =
         peerConnection
@@ -917,37 +1286,22 @@ import Layout from '../layouts/Layout.astro'
 
 名前を自然に入れても構いません。
 
-たとえば、
-
-「いらっしゃいませ、${displayName}」
-
-のような感じです。
-
-ただし、
-定型文を読み上げるような
-堅い接客口調にはしないでください。
-
 すでに知っているお客様を
 迎えるような、
-自然で親しみのある挨拶にしてください。
+親しみのある挨拶にしてください。
 
 くつろいでもらう意味で
 声をかける場合は、
 
 「ゆっくりしていってね」
 
-という表現を使ってください。
+と言ってください。
 
 「ゆっくり見ていってね」
-
 とは言わないでください。
 
-ここは商品を見る店ではなく、
-会話やお酒を楽しみながら
-ゆっくり過ごすバーです。
-
 挨拶のあと、
-軽く一言話しかけてください。
+自然に軽く一言話しかけてください。
                     `.trim(),
                   },
                 })
@@ -955,9 +1309,12 @@ import Layout from '../layouts/Layout.astro'
           }
 
 
+      /*
+       * Realtimeイベント
+       */
       dataChannel
         .onmessage =
-          (
+          async (
             event
           ) => {
 
@@ -1028,14 +1385,18 @@ import Layout from '../layouts/Layout.astro'
 
 
               /*
-               * けいが話している
+               * けいが音声を
+               * 出力している
                *
-               * ここでは画像は触らない
-               * 口は実際の音声波形で動く
+               * API世代差を考えて
+               * 両方拾う
                */
               if (
                 message.type ===
-                'response.audio.delta'
+                  'response.audio.delta' ||
+
+                message.type ===
+                  'response.output_audio.delta'
               ) {
 
                 if (
@@ -1060,34 +1421,78 @@ import Layout from '../layouts/Layout.astro'
 
 
               /*
-               * 返答生成終了
+               * ★ Web検索Function Call
                *
-               * ここでも口は閉じない
-               * 実音声がなくなったら
-               * 波形解析が自動で閉じる
+               * OpenAIが
+               * search_web を呼ぶと
+               * ここへ来る
+               */
+              if (
+                message.type ===
+                  'response.function_call_arguments.done' &&
+                message.name ===
+                  'search_web'
+              ) {
+
+                await handleWebSearch(
+                  message
+                )
+
+                return
+              }
+
+
+              /*
+               * 通常の返答終了
+               *
+               * Function Callの場合も
+               * response.done が来るので、
+               * 検索中なら表示を
+               * 勝手に戻さない
                */
               if (
                 message.type ===
                 'response.done'
               ) {
 
+                const hasFunctionCall =
+                  Array.isArray(
+                    message
+                      .response
+                      ?.output
+                  ) &&
+                  message
+                    .response
+                    .output
+                    .some(
+                      (item) =>
+                        item?.type ===
+                        'function_call'
+                    )
+
+
                 if (
-                  status
+                  !hasFunctionCall
                 ) {
 
-                  status
-                    .textContent =
-                      '話しかけてね🎙️'
-                }
+                  if (
+                    status
+                  ) {
+
+                    status
+                      .textContent =
+                        '話しかけてね🎙️'
+                  }
 
 
-                if (
-                  keiState
-                ) {
+                  if (
+                    keiState
+                  ) {
 
-                  keiState
-                    .textContent =
-                      '聞いてるよ'
+                    keiState
+                      .textContent =
+                        '聞いてるよ'
+                  }
                 }
               }
 
@@ -1144,7 +1549,7 @@ import Layout from '../layouts/Layout.astro'
 
 
       /*
-       * OpenAIへSDP
+       * SDP送信
        */
       const sdpResponse =
         await fetch(
@@ -1231,9 +1636,16 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * 音声終了
+   */
   function stopVoice() {
 
     stopRealLipSync()
+
+
+    handledToolCalls
+      .clear()
 
 
     if (
@@ -1294,7 +1706,7 @@ import Layout from '../layouts/Layout.astro'
     if (
       audioContext &&
       audioContext.state !==
-      'closed'
+        'closed'
     ) {
 
       audioContext
