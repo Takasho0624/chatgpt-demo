@@ -1,11 +1,7 @@
-// #vercel-disable-blocks
-import { ProxyAgent, fetch } from 'undici'
-// #vercel-end
 import type { APIRoute } from 'astro'
 import { verifySignature } from '@/utils/auth'
 
 const apiKey = import.meta.env.OPENAI_API_KEY
-const httpsProxy = import.meta.env.HTTPS_PROXY
 const baseUrl = (
   import.meta.env.OPENAI_API_BASE_URL
   || 'https://api.openai.com'
@@ -73,7 +69,6 @@ export const post: APIRoute = async(context) => {
 ・その場だけの質問
 ・AI側が推測した情報
 ・本人が明言していない事実
-・センシティブな内容を勝手に推測したもの
 
 【重要】
 事実を作らないでください。
@@ -83,12 +78,6 @@ export const post: APIRoute = async(context) => {
 
 出力は説明文ではなく、
 けいが次回読むための簡潔な記憶メモだけにしてください。
-
-例：
-呼び名：たろちゃん
-好きなもの：ウイスキー、ジントニック
-仕事：映像制作
-最近の関心：北海道旅行を計画中
 
 【現在の記憶】
 ${currentMemory || 'まだありません'}
@@ -100,27 +89,20 @@ ${JSON.stringify(recentMessages || [], null, 2)}
 ${latestMessage}
 `.trim()
 
-    const initOptions: any = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        input: memoryPrompt,
-        store: false,
-      }),
-    }
-
-    // #vercel-disable-blocks
-    if (httpsProxy)
-      initOptions.dispatcher = new ProxyAgent(httpsProxy)
-    // #vercel-end
-
     const response = await fetch(
       `${baseUrl}/v1/responses`,
-      initOptions,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          input: memoryPrompt,
+          store: false,
+        }),
+      },
     )
 
     if (!response.ok) {
@@ -154,10 +136,8 @@ ${latestMessage}
       }
     }
 
-    memory = memory.trim()
-
     return new Response(JSON.stringify({
-      memory,
+      memory: memory.trim(),
     }), {
       status: 200,
       headers: {
