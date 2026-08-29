@@ -2,7 +2,6 @@ import { Index, Show, createEffect, createSignal, onCleanup, onMount } from 'sol
 import { useThrottleFn } from 'solidjs-use'
 import { generateSignature } from '@/utils/auth'
 import { supabase } from '@/utils/supabase'
-import IconClear from './icons/Clear'
 import MessageItem from './MessageItem'
 import SystemRoleSettings from './SystemRoleSettings'
 import ErrorMessageItem from './ErrorMessageItem'
@@ -14,7 +13,13 @@ export default () => {
 
   const [currentSystemRoleSettings, setCurrentSystemRoleSettings] = createSignal('')
   const [systemRoleEditing, setSystemRoleEditing] = createSignal(false)
+
+  // 今回のログイン中に画面へ表示する会話だけ
   const [messageList, setMessageList] = createSignal<ChatMessage[]>([])
+
+  // 過去ログ。画面には出さず、けいの文脈としてだけ使う
+  const [hiddenHistory, setHiddenHistory] = createSignal<ChatMessage[]>([])
+
   const [currentError, setCurrentError] = createSignal<ErrorMessage>()
   const [currentAssistantMessage, setCurrentAssistantMessage] = createSignal('')
   const [loading, setLoading] = createSignal(false)
@@ -34,48 +39,6 @@ export default () => {
     if (isStick())
       smoothToBottom()
   })
-
-  // -------------------------
-  // Supabase：過去ログ読み込み
-  // -------------------------
-
-  const loadMessages = async() => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user)
-        return
-
-      const { data, error } = await supabase
-        .from('messages')
-        .select('role, content, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true })
-
-      if (error) {
-        console.error('Failed to load messages:', error)
-        return
-      }
-
-      if (data) {
-        const messages: ChatMessage[] = data.map(item => ({
-          role: item.role,
-          content: item.content,
-        })) as ChatMessage[]
-
-        setMessageList(messages)
-      }
-    }
-    catch (err) {
-      console.error('Failed to load messages:', err)
-    }
-  }
-
-  // -------------------------
-  // Supabase：1発言保存
-  // -------------------------
 
   const saveMessage = async(
     role: 'user' | 'assistant',
@@ -105,20 +68,115 @@ export default () => {
     }
   }
 
-  // -------------------------
-  // 初期化
-  // -------------------------
+  const getJapaneseGreeting = () => {
+    const hour = Number(
+      new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        hour: '2-digit',
+        hour12: false,
+      }).format(new Date()),
+    )
+
+    if (hour >= 5 && hour < 11)
+      return 'おはよう'
+
+    if (hour >= 11 && hour < 18)
+      return 'こんにちは'
+
+    return 'こんばんは'
+  }
+
+  const initializeUser = async() => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user)
+      return
+
+    // -----------------------
+    // プロフィール取得
+    // -----------------------
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name, memory')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    let displayName = profile?.display_name || ''
+
+    // 初回ならGoogleアカウント名を仮の名前として保存
+    if (!displayName) {
+      displayName
+        = user.user_metadata?.full_name
+          || user.user_metadata?.name
+          || ''
+
+      await supabase
+        .from('profiles')
+        .upsert({
+          user_id: user.id,
+          display_name: displayName || null,
+          memory: profile?.memory || null,
+          updated_at: new Date().toISOString(),
+        })
+    }
+
+    // -----------------------
+    // 過去ログは裏でだけ読む
+    // -----------------------
+
+    const { data: oldMessages, error } = await supabase
+      .from('messages')
+      .select('role, content, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(maxHistoryMessages)
+
+    if (error) {
+      console.error('Failed to load history:', error)
+    }
+    else if (oldMessages) {
+      const history = [...oldMessages]
+        .reverse()
+        .map(item => ({
+          role: item.role,
+          content: item.content,
+        })) as ChatMessage[]
+
+      setHiddenHistory(history)
+    }
+
+    // -----------------------
+    // 日本時間で最初の挨拶
+    // -----------------------
+
+    const greeting = getJapaneseGreeting()
+
+    const greetingMessage = displayName
+      ? `${greeting}、${displayName}さん🍸`
+      : `${greeting}🍸`
+
+    // 挨拶は表示するだけ。DBには保存しない
+    setMessageList([
+      {
+        role: 'assistant',
+        content: greetingMessage,
+      },
+    ])
+  }
 
   onMount(async() => {
-    let lastPostion = window.scrollY
+    let lastPosition = window.scrollY
 
     window.addEventListener('scroll', () => {
-      const nowPostion = window.scrollY
+      const nowPosition = window.scrollY
 
-      if (nowPostion < lastPostion)
+      if (nowPosition < lastPosition)
         setStick(false)
 
-      lastPostion = nowPostion
+      lastPosition = nowPosition
     })
 
     try {
@@ -132,8 +190,7 @@ export default () => {
       console.error(err)
     }
 
-    // Googleアカウントに紐づいた過去ログを読み込む
-    await loadMessages()
+    await initializeUser()
 
     window.addEventListener('beforeunload', handleBeforeUnload)
 
@@ -154,10 +211,6 @@ export default () => {
       localStorage.removeItem('stickToBottom')
   }
 
-  // -------------------------
-  // 送信
-  // -------------------------
-
   const handleButtonClick = async() => {
     const inputValue = inputRef.value
 
@@ -174,7 +227,6 @@ export default () => {
       },
     ])
 
-    // ユーザー発言をSupabaseへ保存
     await saveMessage('user', inputValue)
 
     requestWithLatestMessage()
@@ -195,10 +247,6 @@ export default () => {
     })
   }
 
-  // -------------------------
-  // OpenAIへリクエスト
-  // -------------------------
-
   const requestWithLatestMessage = async() => {
     setLoading(true)
     setCurrentAssistantMessage('')
@@ -210,7 +258,22 @@ export default () => {
       const controller = new AbortController()
       setController(controller)
 
-      const requestMessageList = messageList().slice(-maxHistoryMessages)
+      // 過去ログ＋今回の会話を合わせる
+      // ただし画面上には過去ログを表示しない
+      const allMessages = [
+        ...hiddenHistory(),
+        ...messageList().filter(message =>
+          !(message.role === 'assistant'
+            && (
+              message.content.startsWith('おはよう')
+              || message.content.startsWith('こんにちは')
+              || message.content.startsWith('こんばんは')
+            )),
+        ),
+      ]
+
+      const requestMessageList
+        = allMessages.slice(-maxHistoryMessages)
 
       if (currentSystemRoleSettings()) {
         requestMessageList.unshift({
@@ -240,10 +303,8 @@ export default () => {
 
       if (!response.ok) {
         const error = await response.json()
-
         console.error(error.error)
         setCurrentError(error.error)
-
         throw new Error('Request failed')
       }
 
@@ -289,7 +350,6 @@ export default () => {
       console.error(e)
       setLoading(false)
       setController(null)
-
       return
     }
 
@@ -298,10 +358,6 @@ export default () => {
     if (isStick())
       instantToBottom()
   }
-
-  // -------------------------
-  // けいの返答を確定・保存
-  // -------------------------
 
   const archiveCurrentMessage = async() => {
     const assistantMessage = currentAssistantMessage()
@@ -315,7 +371,6 @@ export default () => {
         },
       ])
 
-      // けいの返答もSupabaseへ保存
       await saveMessage(
         'assistant',
         assistantMessage,
@@ -325,7 +380,6 @@ export default () => {
       setLoading(false)
       setController(null)
 
-      // Disable auto-focus on touch devices
       if (!(
         'ontouchstart' in document.documentElement
         || navigator.maxTouchPoints > 0
@@ -335,37 +389,23 @@ export default () => {
     }
   }
 
-  // -------------------------
-  // 新しい夜
-  // -------------------------
-
-  const clear = async() => {
+  // 「新しい夜」は表示中の会話だけリセット。
+  // Supabaseの過去ログやプロフィールは消さない。
+  const clear = () => {
     inputRef.value = ''
     inputRef.style.height = 'auto'
 
-    setMessageList([])
     setCurrentAssistantMessage('')
     setCurrentError(null)
 
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    const greeting = getJapaneseGreeting()
 
-      if (!user)
-        return
-
-      const { error } = await supabase
-        .from('messages')
-        .delete()
-        .eq('user_id', user.id)
-
-      if (error)
-        console.error('Failed to clear messages:', error)
-    }
-    catch (err) {
-      console.error('Failed to clear messages:', err)
-    }
+    setMessageList([
+      {
+        role: 'assistant',
+        content: `${greeting}🍸`,
+      },
+    ])
   }
 
   const stopStreamFetch = () => {
@@ -400,7 +440,7 @@ export default () => {
   return (
     <div my-6>
       <SystemRoleSettings
-        canEdit={() => messageList().length === 0}
+        canEdit={() => messageList().length <= 1}
         systemRoleEditing={systemRoleEditing}
         setSystemRoleEditing={setSystemRoleEditing}
         currentSystemRoleSettings={currentSystemRoleSettings}
