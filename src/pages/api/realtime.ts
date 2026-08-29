@@ -49,7 +49,7 @@ export const post: APIRoute = async ({ request }) => {
 
             audio: {
               output: {
-                voice: 'shimmer',
+                voice: 'coral',
               },
             },
 
