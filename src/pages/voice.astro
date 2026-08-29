@@ -72,12 +72,18 @@ import Layout from '../layouts/Layout.astro'
   let displayName = 'お客様'
   let memory = ''
 
-  let audioContext = null
-  let analyser = null
-  let audioSource = null
-  let lipSyncFrame = null
+  let mouthTimer = null
+  let mouthOpen = false
+  let isAssistantSpeaking = false
 
-  let blinkTimer = null
+  const CLOSED_SRC =
+    '/kei-mouth-close.png'
+
+  const OPEN_SRC =
+    '/kei-mouth-open.png'
+
+  const SMALL_OPEN_SRC =
+    '/kei-mouth-open-small.png'
 
 
   const voiceButton =
@@ -102,216 +108,144 @@ import Layout from '../layouts/Layout.astro'
     document.getElementById('kei-avatar')
 
 
-  function setAvatar(type) {
+  function setClosedMouth() {
+
     if (!keiAvatar) return
 
-    if (type === 'close') {
-      keiAvatar.src =
-        '/kei-mouth-close.png'
-    }
+    keiAvatar.src =
+      CLOSED_SRC
 
-    if (type === 'small') {
-      keiAvatar.src =
-        '/kei-mouth-open-small.png'
-    }
-
-    if (type === 'open') {
-      keiAvatar.src =
-        '/kei-mouth-open.png'
-    }
-
-    if (type === 'blink') {
-      keiAvatar.src =
-        '/kei-eyes-close.png'
-    }
+    mouthOpen =
+      false
   }
 
 
-  function stopLipSync() {
+  function setOpenMouth() {
 
-    if (lipSyncFrame) {
+    if (!keiAvatar) return
 
-      cancelAnimationFrame(
-        lipSyncFrame
+    keiAvatar.src =
+      OPEN_SRC
+
+    mouthOpen =
+      true
+  }
+
+
+  function setSmallOpenMouth() {
+
+    if (!keiAvatar) return
+
+    keiAvatar.src =
+      SMALL_OPEN_SRC
+
+    mouthOpen =
+      true
+  }
+
+
+  function startMouthAnimation() {
+
+    if (
+      mouthTimer
+    ) {
+      clearInterval(
+        mouthTimer
       )
-
-      lipSyncFrame = null
     }
 
-    setAvatar('close')
-  }
-
-
-  function startLipSync() {
-
-    if (!remoteAudio) return
+    /*
+     * 最初に少し口を開ける
+     */
+    setSmallOpenMouth()
 
 
     /*
-     * AudioContextは
-     * ユーザー操作後に開始する
+     * 約180msごとに
+     * 口を開閉
      */
-    if (!audioContext) {
-
-      audioContext =
-        new AudioContext()
-
-
-      analyser =
-        audioContext
-          .createAnalyser()
-
-
-      analyser.fftSize = 256
-
-      analyser
-        .smoothingTimeConstant = 0.55
-
-
-      audioSource =
-        audioContext
-          .createMediaElementSource(
-            remoteAudio
-          )
-
-
-      audioSource.connect(
-        analyser
-      )
-
-
-      analyser.connect(
-        audioContext.destination
-      )
-    }
-
-
-    if (
-      audioContext.state ===
-      'suspended'
-    ) {
-
-      audioContext.resume()
-    }
-
-
-    const data =
-      new Uint8Array(
-        analyser.frequencyBinCount
-      )
-
-
-    function animate() {
-
-      analyser
-        .getByteFrequencyData(
-          data
-        )
-
-
-      let total = 0
-
-
-      for (
-        let i = 0;
-        i < data.length;
-        i++
-      ) {
-
-        total += data[i]
-      }
-
-
-      const volume =
-        total /
-        data.length
-
-
-      /*
-       * 音量に応じて
-       * 口の開き具合を変更
-       */
-      if (volume < 4) {
-
-        setAvatar('close')
-
-      } else if (
-        volume < 13
-      ) {
-
-        setAvatar('small')
-
-      } else {
-
-        setAvatar('open')
-      }
-
-
-      lipSyncFrame =
-        requestAnimationFrame(
-          animate
-        )
-    }
-
-
-    animate()
-  }
-
-
-  /*
-   * 簡易まばたき
-   *
-   * 5〜9秒くらいの
-   * ランダム間隔で
-   * 一瞬だけ目を閉じる
-   */
-  function scheduleBlink() {
-
-    if (blinkTimer) {
-
-      clearTimeout(
-        blinkTimer
-      )
-    }
-
-
-    const delay =
-      5000 +
-      Math.random() *
-      4000
-
-
-    blinkTimer =
-      setTimeout(
+    mouthTimer =
+      setInterval(
         () => {
 
-          /*
-           * 喋っていないときだけ
-           * まばたき
-           */
           if (
-            !lipSyncFrame
+            !isAssistantSpeaking
           ) {
 
-            setAvatar('blink')
+            stopMouthAnimation()
 
-
-            setTimeout(
-              () => {
-
-                setAvatar('close')
-
-              },
-              140
-            )
+            return
           }
 
 
-          scheduleBlink()
+          if (mouthOpen) {
+
+            setClosedMouth()
+
+          } else {
+
+            /*
+             * 大口と半開きを
+             * 少しランダムにする
+             */
+            const random =
+              Math.random()
+
+            if (
+              random < 0.45
+            ) {
+
+              setSmallOpenMouth()
+
+            } else {
+
+              setOpenMouth()
+            }
+          }
 
         },
-        delay
+        180
       )
+  }
+
+
+  function stopMouthAnimation() {
+
+    if (
+      mouthTimer
+    ) {
+
+      clearInterval(
+        mouthTimer
+      )
+
+      mouthTimer =
+        null
+    }
+
+    setClosedMouth()
+  }
+
+
+  function startAssistantSpeaking() {
+
+    if (
+      isAssistantSpeaking
+    ) return
+
+    isAssistantSpeaking =
+      true
+
+    startMouthAnimation()
+  }
+
+
+  function stopAssistantSpeaking() {
+
+    isAssistantSpeaking =
+      false
+
+    stopMouthAnimation()
   }
 
 
@@ -363,7 +297,9 @@ import Layout from '../layouts/Layout.astro'
 
       if (
         profile?.display_name &&
-        profile.display_name.trim()
+        profile
+          .display_name
+          .trim()
       ) {
 
         displayName =
@@ -374,9 +310,18 @@ import Layout from '../layouts/Layout.astro'
       } else {
 
         displayName =
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email?.split('@')[0] ||
+          user
+            .user_metadata
+            ?.full_name ||
+
+          user
+            .user_metadata
+            ?.name ||
+
+          user
+            .email
+            ?.split('@')[0] ||
+
           'お客様'
       }
 
@@ -390,37 +335,48 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      if (customerName) {
+      if (
+        customerName
+      ) {
 
-        customerName.textContent =
-          displayName
+        customerName
+          .textContent =
+            displayName
       }
 
 
-      if (status) {
+      if (
+        status
+      ) {
 
-        status.textContent =
-          'マイクを押してね🍸'
+        status
+          .textContent =
+            'マイクを押してね🍸'
       }
 
 
-      if (keiState) {
+      if (
+        keiState
+      ) {
 
-        keiState.textContent =
-          '待ってるよ'
+        keiState
+          .textContent =
+            '待ってるよ'
       }
 
 
-      setAvatar('close')
-
-      scheduleBlink()
+      setClosedMouth()
 
 
-      if (voiceButton) {
+      if (
+        voiceButton
+      ) {
 
-        voiceButton.disabled =
-          false
+        voiceButton
+          .disabled =
+            false
       }
+
 
     } catch (error) {
 
@@ -430,10 +386,13 @@ import Layout from '../layouts/Layout.astro'
       )
 
 
-      if (status) {
+      if (
+        status
+      ) {
 
-        status.textContent =
-          'ユーザー情報を取得できませんでした'
+        status
+          .textContent =
+            'ユーザー情報を取得できませんでした'
       }
     }
   }
@@ -443,49 +402,56 @@ import Layout from '../layouts/Layout.astro'
 
     try {
 
-      if (voiceButton) {
+      if (
+        voiceButton
+      ) {
 
-        voiceButton.disabled =
-          true
+        voiceButton
+          .disabled =
+            true
       }
 
 
-      if (status) {
+      if (
+        status
+      ) {
 
-        status.textContent =
-          '接続しています…'
+        status
+          .textContent =
+            '接続しています…'
       }
 
 
-      if (keiState) {
+      if (
+        keiState
+      ) {
 
-        keiState.textContent =
-          'ちょっと待ってね'
+        keiState
+          .textContent =
+            'ちょっと待ってね'
       }
 
 
-      setAvatar('close')
+      setClosedMouth()
 
 
-      /*
-       * Realtime用
-       * 一時キー取得
-       */
       const tokenResponse =
         await fetch(
           '/api/realtime',
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
                 'application/json',
             },
 
-            body: JSON.stringify({
-              displayName,
-              memory,
-            }),
+            body:
+              JSON.stringify({
+                displayName,
+                memory,
+              }),
           }
         )
 
@@ -495,7 +461,8 @@ import Layout from '../layouts/Layout.astro'
       ) {
 
         throw new Error(
-          await tokenResponse.text()
+          await tokenResponse
+            .text()
         )
       }
 
@@ -513,8 +480,13 @@ import Layout from '../layouts/Layout.astro'
 
       const ephemeralKey =
         tokenData.value ||
-        tokenData.client_secret?.value ||
-        tokenData.client_secret
+
+        tokenData
+          .client_secret
+          ?.value ||
+
+        tokenData
+          .client_secret
 
 
       if (
@@ -531,9 +503,6 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      /*
-       * WebRTC
-       */
       peerConnection =
         new RTCPeerConnection()
 
@@ -545,36 +514,99 @@ import Layout from '../layouts/Layout.astro'
         remoteAudio
       ) {
 
-        remoteAudio.autoplay =
-          true
+        remoteAudio
+          .autoplay =
+            true
 
 
-        peerConnection.ontrack =
-          async (event) => {
+        peerConnection
+          .ontrack =
+            async (
+              event
+            ) => {
 
-            remoteAudio.srcObject =
-              event.streams[0]
+              remoteAudio
+                .srcObject =
+                  event
+                    .streams[0]
 
 
-            try {
+              try {
 
-              await remoteAudio.play()
+                await remoteAudio
+                  .play()
 
-            } catch (error) {
-
-              console.warn(
-                'Audio play error:',
+              } catch (
                 error
-              )
+              ) {
+
+                console.warn(
+                  'Audio play error:',
+                  error
+                )
+              }
             }
 
 
-            /*
-             * 実際の再生音声で
-             * 口パク開始
-             */
-            startLipSync()
-          }
+        /*
+         * audio要素が
+         * 実際に再生されたら
+         * 口パク開始
+         */
+        remoteAudio
+          .addEventListener(
+            'play',
+            () => {
+
+              console.log(
+                'remoteAudio play'
+              )
+
+              startAssistantSpeaking()
+            }
+          )
+
+
+        remoteAudio
+          .addEventListener(
+            'playing',
+            () => {
+
+              console.log(
+                'remoteAudio playing'
+              )
+
+              startAssistantSpeaking()
+            }
+          )
+
+
+        remoteAudio
+          .addEventListener(
+            'pause',
+            () => {
+
+              console.log(
+                'remoteAudio pause'
+              )
+
+              stopAssistantSpeaking()
+            }
+          )
+
+
+        remoteAudio
+          .addEventListener(
+            'ended',
+            () => {
+
+              console.log(
+                'remoteAudio ended'
+              )
+
+              stopAssistantSpeaking()
+            }
+          )
       }
 
 
@@ -586,6 +618,7 @@ import Layout from '../layouts/Layout.astro'
           .mediaDevices
           .getUserMedia({
             audio: {
+
               echoCancellation:
                 true,
 
@@ -601,7 +634,9 @@ import Layout from '../layouts/Layout.astro'
       localStream
         .getTracks()
         .forEach(
-          (track) => {
+          (
+            track
+          ) => {
 
             peerConnection
               .addTrack(
@@ -612,9 +647,6 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
-      /*
-       * Realtimeイベント
-       */
       dataChannel =
         peerConnection
           .createDataChannel(
@@ -622,46 +654,54 @@ import Layout from '../layouts/Layout.astro'
           )
 
 
-      dataChannel.onopen =
-        () => {
+      dataChannel
+        .onopen =
+          () => {
 
-          console.log(
-            'Realtime connected'
-          )
-
-
-          if (status) {
-
-            status.textContent =
-              'けいにつながりました🎙️'
-          }
+            console.log(
+              'Realtime connected'
+            )
 
 
-          if (keiState) {
+            if (
+              status
+            ) {
 
-            keiState.textContent =
-              'いらっしゃいませ'
-          }
-
-
-          if (stopButton) {
-
-            stopButton.disabled =
-              false
-          }
+              status
+                .textContent =
+                  'けいにつながりました🎙️'
+            }
 
 
-          /*
-           * 最初の挨拶
-           */
-          dataChannel.send(
-            JSON.stringify({
-              type:
-                'response.create',
+            if (
+              keiState
+            ) {
 
-              response: {
+              keiState
+                .textContent =
+                  'いらっしゃいませ'
+            }
 
-                instructions: `
+
+            if (
+              stopButton
+            ) {
+
+              stopButton
+                .disabled =
+                  false
+            }
+
+
+            dataChannel
+              .send(
+                JSON.stringify({
+                  type:
+                    'response.create',
+
+                  response: {
+
+                    instructions: `
 お客様が来店しました。
 
 最初の一言として、
@@ -703,159 +743,199 @@ import Layout from '../layouts/Layout.astro'
 
 挨拶のあと、
 軽く一言話しかけてください。
-                `.trim(),
-              },
-            })
-          )
-        }
-
-
-      dataChannel.onmessage =
-        (event) => {
-
-          try {
-
-            const message =
-              JSON.parse(
-                event.data
+                    `.trim(),
+                  },
+                })
               )
+          }
 
 
-            console.log(
-              'Realtime event:',
-              message
-            )
+      dataChannel
+        .onmessage =
+          (
+            event
+          ) => {
+
+            try {
+
+              const message =
+                JSON.parse(
+                  event.data
+                )
 
 
-            /*
-             * お客様が
-             * 話し始めた
-             */
-            if (
-              message.type ===
-              'input_audio_buffer.speech_started'
-            ) {
-
-              if (status) {
-
-                status.textContent =
-                  '聞いてるよ…'
-              }
-
-
-              if (keiState) {
-
-                keiState.textContent =
-                  '👂'
-              }
-            }
-
-
-            /*
-             * お客様が
-             * 話し終えた
-             */
-            if (
-              message.type ===
-              'input_audio_buffer.speech_stopped'
-            ) {
-
-              if (status) {
-
-                status.textContent =
-                  'けいが考えています…'
-              }
-
-
-              if (keiState) {
-
-                keiState.textContent =
-                  'んー'
-              }
-            }
-
-
-            /*
-             * けいが
-             * 話している
-             */
-            if (
-              message.type ===
-              'response.audio.delta'
-            ) {
-
-              if (status) {
-
-                status.textContent =
-                  'けいが話しています'
-              }
-
-
-              if (keiState) {
-
-                keiState.textContent =
-                  '♪'
-              }
-            }
-
-
-            /*
-             * 返答終了
-             */
-            if (
-              message.type ===
-              'response.done'
-            ) {
-
-              if (status) {
-
-                status.textContent =
-                  '話しかけてね🎙️'
-              }
-
-
-              if (keiState) {
-
-                keiState.textContent =
-                  '聞いてるよ'
-              }
-            }
-
-
-            /*
-             * APIエラー
-             */
-            if (
-              message.type ===
-              'error'
-            ) {
-
-              console.error(
-                'Realtime API error:',
+              console.log(
+                'Realtime event:',
                 message
               )
 
 
-              if (status) {
+              /*
+               * お客様が
+               * 話し始めた
+               */
+              if (
+                message.type ===
+                'input_audio_buffer.speech_started'
+              ) {
 
-                status.textContent =
-                  '音声APIでエラーが出ました'
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      '聞いてるよ…'
+                }
+
+
+                if (
+                  keiState
+                ) {
+
+                  keiState
+                    .textContent =
+                      '👂'
+                }
               }
-            }
 
-          } catch (error) {
 
-            console.error(
-              'Realtime message error:',
+              /*
+               * お客様が
+               * 話し終わった
+               */
+              if (
+                message.type ===
+                'input_audio_buffer.speech_stopped'
+              ) {
+
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      'けいが考えています…'
+                }
+
+
+                if (
+                  keiState
+                ) {
+
+                  keiState
+                    .textContent =
+                      'んー'
+                }
+              }
+
+
+              /*
+               * OpenAIが
+               * 音声を作り始めた
+               *
+               * audio要素のイベントが
+               * 発火しないブラウザ対策として
+               * ここでも口パク開始
+               */
+              if (
+                message.type ===
+                'response.audio.delta'
+              ) {
+
+                startAssistantSpeaking()
+
+
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      'けいが話しています'
+                }
+
+
+                if (
+                  keiState
+                ) {
+
+                  keiState
+                    .textContent =
+                      '♪'
+                }
+              }
+
+
+              /*
+               * 返答終了
+               */
+              if (
+                message.type ===
+                'response.done'
+              ) {
+
+                stopAssistantSpeaking()
+
+
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      '話しかけてね🎙️'
+                }
+
+
+                if (
+                  keiState
+                ) {
+
+                  keiState
+                    .textContent =
+                      '聞いてるよ'
+                }
+              }
+
+
+              if (
+                message.type ===
+                'error'
+              ) {
+
+                console.error(
+                  'Realtime API error:',
+                  message
+                )
+
+
+                stopAssistantSpeaking()
+
+
+                if (
+                  status
+                ) {
+
+                  status
+                    .textContent =
+                      '音声APIでエラーが出ました'
+                }
+              }
+
+
+            } catch (
               error
-            )
+            ) {
+
+              console.error(
+                'Realtime message error:',
+                error
+              )
+            }
           }
-        }
 
 
-      /*
-       * WebRTC Offer
-       */
       const offer =
         await peerConnection
           .createOffer()
@@ -867,9 +947,6 @@ import Layout from '../layouts/Layout.astro'
         )
 
 
-      /*
-       * SDP送信
-       */
       const sdpResponse =
         await fetch(
           'https://api.openai.com/v1/realtime/calls',
@@ -899,7 +976,8 @@ import Layout from '../layouts/Layout.astro'
       ) {
 
         throw new Error(
-          await sdpResponse.text()
+          await sdpResponse
+            .text()
         )
       }
 
@@ -919,7 +997,9 @@ import Layout from '../layouts/Layout.astro'
         })
 
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
 
       console.error(
         'Voice start error:',
@@ -927,19 +1007,27 @@ import Layout from '../layouts/Layout.astro'
       )
 
 
-      if (status) {
+      if (
+        status
+      ) {
 
-        status.textContent =
-          '接続できませんでした'
+        status
+          .textContent =
+            '接続できませんでした'
       }
 
 
-      if (keiState) {
+      if (
+        keiState
+      ) {
 
-        keiState.textContent =
-          'ごめん💦'
+        keiState
+          .textContent =
+            'ごめん💦'
       }
 
+
+      stopAssistantSpeaking()
 
       stopVoice()
     }
@@ -948,33 +1036,46 @@ import Layout from '../layouts/Layout.astro'
 
   function stopVoice() {
 
-    stopLipSync()
+    stopAssistantSpeaking()
 
 
-    if (dataChannel) {
+    if (
+      dataChannel
+    ) {
 
-      dataChannel.close()
+      dataChannel
+        .close()
 
-      dataChannel = null
+      dataChannel =
+        null
     }
 
 
-    if (peerConnection) {
+    if (
+      peerConnection
+    ) {
 
-      peerConnection.close()
+      peerConnection
+        .close()
 
-      peerConnection = null
+      peerConnection =
+        null
     }
 
 
-    if (localStream) {
+    if (
+      localStream
+    ) {
 
       localStream
         .getTracks()
         .forEach(
-          (track) => {
+          (
+            track
+          ) => {
 
-            track.stop()
+            track
+              .stop()
           }
         )
 
@@ -983,52 +1084,56 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
-    if (remoteAudio) {
+    if (
+      remoteAudio
+    ) {
 
-      remoteAudio.srcObject =
-        null
+      remoteAudio
+        .srcObject =
+          null
     }
 
 
     if (
-      audioContext &&
-      audioContext.state !==
-      'closed'
+      status
     ) {
 
-      audioContext
-        .suspend()
+      status
+        .textContent =
+          'マイクを押してね🍸'
     }
 
 
-    if (status) {
+    if (
+      keiState
+    ) {
 
-      status.textContent =
-        'マイクを押してね🍸'
+      keiState
+        .textContent =
+          '待ってるよ'
     }
 
 
-    if (keiState) {
+    setClosedMouth()
 
-      keiState.textContent =
-        '待ってるよ'
+
+    if (
+      voiceButton
+    ) {
+
+      voiceButton
+        .disabled =
+          false
     }
 
 
-    setAvatar('close')
+    if (
+      stopButton
+    ) {
 
-
-    if (voiceButton) {
-
-      voiceButton.disabled =
-        false
-    }
-
-
-    if (stopButton) {
-
-      stopButton.disabled =
-        true
+      stopButton
+        .disabled =
+          true
     }
   }
 
@@ -1047,10 +1152,11 @@ import Layout from '../layouts/Layout.astro'
     )
 
 
-  window.addEventListener(
-    'beforeunload',
-    stopVoice
-  )
+  window
+    .addEventListener(
+      'beforeunload',
+      stopVoice
+    )
 
 
   initializeUser()
@@ -1097,9 +1203,7 @@ import Layout from '../layouts/Layout.astro'
     );
 
   padding:
-    28px
-    24px
-    32px;
+    28px 24px 32px;
 
   text-align:
     center;
@@ -1220,8 +1324,7 @@ import Layout from '../layouts/Layout.astro'
     auto;
 
   margin:
-    0 auto
-    12px;
+    0 auto 12px;
 
   object-fit:
     contain;
@@ -1372,9 +1475,7 @@ import Layout from '../layouts/Layout.astro'
       100%;
 
     padding:
-      22px
-      14px
-      24px;
+      22px 14px 24px;
   }
 
 
