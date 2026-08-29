@@ -29,3 +29,6 @@ pnpm-debug.log*
 
 # Editor directories and files
 .idea
+
+package-lock.json
+pnpm-lock.yaml.bak
