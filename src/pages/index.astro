@@ -10,9 +10,13 @@ import 'highlight.js/styles/atom-one-dark.css'
 
 <Layout title="★けいのBAR">
   <main>
-    <button id="logout-button" class="logout-button">
-      ログアウト
-    </button>
+    <div class="login-status">
+      <span id="login-name"></span>
+      <span class="login-separator">｜</span>
+      <button id="logout-button" class="logout-button">
+        ログアウト
+      </button>
+    </div>
 
     <Header />
     <Generator client:load />
@@ -23,15 +27,30 @@ import 'highlight.js/styles/atom-one-dark.css'
 <script>
 import { supabase } from '../utils/supabase'
 
-async function checkCurrentAuth() {
-  const { data } = await supabase.auth.getSession()
+async function initializeAuth() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!data.session) {
+  if (!user) {
     window.location.href = '/password'
+    return
+  }
+
+  const loginName = document.getElementById('login-name')
+
+  const googleName =
+    user.user_metadata?.full_name ||
+    user.user_metadata?.name ||
+    user.email?.split('@')[0] ||
+    'Googleアカウント'
+
+  if (loginName) {
+    loginName.textContent = `${googleName}としてログイン中`
   }
 }
 
-checkCurrentAuth()
+initializeAuth()
 
 const logoutButton = document.getElementById('logout-button')
 
@@ -42,21 +61,63 @@ logoutButton?.addEventListener('click', async () => {
 </script>
 
 <style>
-.logout-button {
+.login-status {
   position: fixed;
-  top: 16px;
-  right: 16px;
+  top: 14px;
+  right: 18px;
   z-index: 1000;
-  padding: 8px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.35);
-  color: white;
+
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 7px 12px;
+
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 9px;
+
+  background: rgba(15, 10, 7, 0.50);
+  backdrop-filter: blur(8px);
+
+  color: rgba(255, 255, 255, 0.82);
+
+  font-size: 12px;
+  line-height: 1;
+}
+
+.login-separator {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.logout-button {
+  padding: 0;
+
+  border: none;
+  background: transparent;
+
+  color: rgba(255, 255, 255, 0.82);
+
+  font-size: 12px;
   cursor: pointer;
-  font-size: 14px;
 }
 
 .logout-button:hover {
-  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .login-status {
+    top: 8px;
+    right: 8px;
+
+    padding: 6px 9px;
+
+    font-size: 10px;
+  }
+
+  .logout-button {
+    font-size: 10px;
+  }
 }
 </style>
