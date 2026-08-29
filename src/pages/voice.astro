@@ -21,9 +21,13 @@ import Layout from '../layouts/Layout.astro'
 
       <div class="kei-area">
 
+        <!-- 背景 -->
         <div class="kei-area__bg"></div>
+
+        <!-- 背景を少し暗くする -->
         <div class="kei-area__overlay"></div>
 
+        <!-- けい本体 -->
         <div class="kei-area__inner">
 
           <img
@@ -33,10 +37,18 @@ import Layout from '../layouts/Layout.astro'
             class="kei-avatar"
           />
 
-          <div id="kei-state" class="kei-state">
-            準備中
-          </div>
+        </div>
 
+        <!-- 前景カウンター -->
+        <img
+          src="/kei-counter-front.png"
+          alt=""
+          class="kei-counter-front"
+        />
+
+        <!-- 状態表示 -->
+        <div id="kei-state" class="kei-state">
+          準備中
         </div>
 
       </div>
@@ -156,6 +168,9 @@ import Layout from '../layouts/Layout.astro'
     )
 
 
+  /*
+   * キャラ画像を先読み
+   */
   function preloadAvatarImages() {
 
     [
@@ -174,6 +189,9 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * 口の状態変更
+   */
   function setMouth(type) {
 
     if (!keiAvatar) {
@@ -223,7 +241,7 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * まばたき
+   * まばたき予約
    */
   function scheduleBlink() {
 
@@ -265,6 +283,9 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * 1回まばたき
+   */
   function blinkOnce() {
 
     if (
@@ -321,6 +342,9 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * まばたき停止
+   */
   function stopBlinking() {
 
     if (
@@ -355,7 +379,7 @@ import Layout from '../layouts/Layout.astro'
 
 
   /*
-   * リップシンク
+   * リップシンク停止
    */
   function stopRealLipSync() {
 
@@ -409,6 +433,9 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * 実音声リップシンク
+   */
   async function startRealLipSync(
     stream
   ) {
@@ -1990,7 +2017,7 @@ Web検索がうまくいきませんでした。
 
 
 /* =========================
-   けい＋バックバー
+   バー背景
    ========================= */
 
 .kei-area {
@@ -2036,12 +2063,17 @@ Web検索がうまくいきませんでした。
 }
 
 
+/* バックバー */
+
 .kei-area__bg {
 
   position:
     absolute;
 
   inset:
+    0;
+
+  z-index:
     0;
 
   background-image:
@@ -2051,7 +2083,7 @@ Web検索がうまくいきませんでした。
     cover;
 
   background-position:
-    center;
+    center 44%;
 
   transform:
     scale(1.03);
@@ -2062,6 +2094,8 @@ Web検索がうまくいきませんでした。
 }
 
 
+/* 暗さ調整 */
+
 .kei-area__overlay {
 
   position:
@@ -2070,6 +2104,9 @@ Web検索がうまくいきませんでした。
   inset:
     0;
 
+  z-index:
+    1;
+
   background:
     linear-gradient(
       to bottom,
@@ -2077,25 +2114,29 @@ Web検索がうまくいきませんでした。
         20,
         10,
         5,
-        .10
+        .08
       ) 0%,
 
       rgba(
         20,
         10,
         5,
-        .15
-      ) 42%,
+        .12
+      ) 45%,
 
       rgba(
         10,
         5,
         3,
-        .48
+        .28
       ) 100%
     );
 }
 
+
+/* =========================
+   けい
+   ========================= */
 
 .kei-area__inner {
 
@@ -2124,7 +2165,7 @@ Web検索がうまくいきませんでした。
     flex-end;
 
   padding:
-    16px 12px 14px;
+    16px 12px 0;
 }
 
 
@@ -2140,19 +2181,26 @@ Web検索がうまくいきませんでした。
     );
 
   max-height:
-    400px;
+    405px;
 
   height:
     auto;
 
   margin:
-    0 auto 8px;
+    0 auto;
 
   object-fit:
     contain;
 
   object-position:
     center bottom;
+
+  /*
+   * 少し下げて
+   * カウンター内側にいるようにする
+   */
+  transform:
+    translateY(25px);
 
   filter:
     drop-shadow(
@@ -2172,16 +2220,67 @@ Web検索がうまくいきませんでした。
 
   -webkit-user-drag:
     none;
+
+  pointer-events:
+    none;
 }
 
+
+/* =========================
+   前景カウンター
+   ========================= */
+
+.kei-counter-front {
+
+  position:
+    absolute;
+
+  left:
+    0;
+
+  bottom:
+    0;
+
+  width:
+    100%;
+
+  height:
+    auto;
+
+  z-index:
+    5;
+
+  pointer-events:
+    none;
+
+  user-select:
+    none;
+
+  -webkit-user-drag:
+    none;
+}
+
+
+/* =========================
+   状態表示
+   ========================= */
 
 .kei-state {
 
   position:
-    relative;
+    absolute;
 
   z-index:
-    3;
+    10;
+
+  left:
+    50%;
+
+  bottom:
+    12px;
+
+  transform:
+    translateX(-50%);
 
   min-height:
     20px;
@@ -2197,7 +2296,7 @@ Web検索がうまくいきませんでした。
       0,
       0,
       0,
-      .28
+      .42
     );
 
   color:
@@ -2205,16 +2304,34 @@ Web検索がうまくいきませんでした。
       255,
       255,
       255,
-      .88
+      .92
     );
 
   font-size:
     14px;
 
+  white-space:
+    nowrap;
+
   backdrop-filter:
     blur(5px);
+
+  box-shadow:
+    0
+    3px
+    12px
+    rgba(
+      0,
+      0,
+      0,
+      .25
+    );
 }
 
+
+/* =========================
+   ボタン
+   ========================= */
 
 .voice-button,
 .stop-button {
@@ -2344,14 +2461,14 @@ Web検索がうまくいきませんでした。
       340px;
 
     padding:
-      12px 8px 12px;
+      12px 8px 0;
   }
 
 
   .kei-area__bg {
 
     background-position:
-      center center;
+      center 45%;
   }
 
 
@@ -2364,7 +2481,30 @@ Web検索がうまくいきませんでした。
       );
 
     max-height:
-      310px;
+      320px;
+
+    transform:
+      translateY(20px);
+  }
+
+
+  .kei-counter-front {
+
+    width:
+      100%;
+  }
+
+
+  .kei-state {
+
+    bottom:
+      8px;
+
+    font-size:
+      13px;
+
+    padding:
+      4px 10px;
   }
 
 
