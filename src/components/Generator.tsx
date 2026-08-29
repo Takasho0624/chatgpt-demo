@@ -14,11 +14,8 @@ export default () => {
   const [currentSystemRoleSettings, setCurrentSystemRoleSettings] = createSignal('')
   const [systemRoleEditing, setSystemRoleEditing] = createSignal(false)
 
-  // 今回の画面に表示する会話
+  // 今この画面に表示している会話だけ
   const [messageList, setMessageList] = createSignal<ChatMessage[]>([])
-
-  // 過去ログ。画面には表示せず、文脈としてだけ使う
-  const [hiddenHistory, setHiddenHistory] = createSignal<ChatMessage[]>([])
 
   // 永続プロフィール
   const [profileName, setProfileName] = createSignal('')
@@ -95,7 +92,7 @@ export default () => {
   }
 
   // -------------------------
-  // 会話ログ保存
+  // メッセージをSupabaseへ保存
   // -------------------------
 
   const saveMessage = async(
@@ -162,7 +159,6 @@ export default () => {
         return false
       }
 
-      // この発言からすぐ新しい名前を使えるようにする
       setProfileName(cleanName)
       setNameConfirmed(true)
 
@@ -175,8 +171,7 @@ export default () => {
   }
 
   // -------------------------
-  // 呼び名の判定
-  // 初回確認にも、途中変更にも対応
+  // 呼び名の初回設定・途中変更
   // -------------------------
 
   const updateNamePreference = async(content: string) => {
@@ -187,16 +182,14 @@ export default () => {
 
     let detectedName = ''
 
-    // ----------------------------------
-    // すでに名前が確定している場合
-    // 明示的な変更指示だけ拾う
-    // ----------------------------------
-
+    // すでに呼び名が確定している場合は、
+    // 明示的な変更指示だけを拾う
     if (nameConfirmed()) {
       const renamePatterns = [
         /(?:これからは|今後は|今度から|次から|やっぱり)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:って呼んで|ってよんで|と呼んで|とよんで|で呼んで|でよんで)/,
         /[「『]?([^」』、。！!？?\n]+?)[」』]?(?:って呼んで|ってよんで|と呼んで|とよんで|で呼んで|でよんで)/,
         /(?:これからは|今後は|今度から|次から|やっぱり)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:でお願いします|でいいです|でいいよ|がいいです|がいいよ)/,
+        /(?:やっぱり|これからは|今後は|今度から|次から)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:で|にして)$/,
       ]
 
       for (const pattern of renamePatterns) {
@@ -208,32 +201,13 @@ export default () => {
         }
       }
 
-      // 「やっぱりショウくんで」など
-      if (!detectedName) {
-        const shortChangePatterns = [
-          /(?:やっぱり|これからは|今後は|今度から|次から)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:で|にして)$/,
-        ]
-
-        for (const pattern of shortChangePatterns) {
-          const match = text.match(pattern)
-
-          if (match?.[1]) {
-            detectedName = match[1].trim()
-            break
-          }
-        }
-      }
-
       if (!detectedName)
         return false
 
       return await saveProfileName(detectedName)
     }
 
-    // ----------------------------------
-    // 初回：Google名のままでよい場合
-    // ----------------------------------
-
+    // 初回。「今のGoogle名でいい」という返答
     const keepCurrentPatterns = [
       /そのままで/,
       /その名前で/,
@@ -243,14 +217,10 @@ export default () => {
       /その呼び方で/,
     ]
 
-    if (keepCurrentPatterns.some(pattern => pattern.test(text))) {
+    if (keepCurrentPatterns.some(pattern => pattern.test(text)))
       detectedName = profileName()
-    }
 
-    // ----------------------------------
-    // 初回：本人が名前を指定
-    // ----------------------------------
-
+    // 初回。別の呼び名を指定
     if (!detectedName) {
       const firstNamePatterns = [
         /(?:私の名前は|名前は|僕は|ぼくは|私は|わたしは)\s*[「『]?([^」』、。！!？?\n]+?)[」』]?(?:です|だよ|だ|といいます|と言います)/,
@@ -268,8 +238,8 @@ export default () => {
       }
     }
 
-    // 初回確認の直後なら、
-    // 「テスト太郎」「テスト太郎で」程度の短い返答も名前と判断
+    // 初回確認直後の
+    // 「テスト太郎」「テスト太郎で」なども拾う
     if (!detectedName && text.length <= 30) {
       const candidate = text
         .replace(/^(じゃあ|では|えっと|うん|はい)[、,\s]*/g, '')
@@ -292,6 +262,190 @@ export default () => {
       return false
 
     return await saveProfileName(detectedName)
+  }
+
+  // -------------------------
+  // 長期記憶をSupabaseへ保存
+  // -------------------------
+
+  const saveMemory = async(memory: string) => {
+    const cleanMemory = memory.trim()
+
+    if (!cleanMemory)
+      return
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user)
+        return
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          user_id: user.id,
+          display_name: profileName() || null,
+          name_confirmed: nameConfirmed(),
+          memory: cleanMemory,
+          updated_at: new Date().toISOString(),
+        })
+
+      if (error) {
+        console.error('Failed to save memory:', error)
+        return
+      }
+
+      setProfileMemory(cleanMemory)
+    }
+    catch (err) {
+      console.error('Failed to save memory:', err)
+    }
+  }
+
+  // -------------------------
+  // 長期記憶をAIで更新
+  // -------------------------
+
+  const updateLongTermMemory = async(
+    latestUserMessage: string,
+    latestAssistantMessage: string,
+  ) => {
+    try {
+      if (!latestUserMessage)
+        return
+
+      const recentMessages = [
+        ...messageList()
+          .filter((message, index) => index !== 0)
+          .slice(-6),
+        {
+          role: 'assistant',
+          content: latestAssistantMessage,
+        },
+      ]
+
+      const timestamp = Date.now()
+
+      const response = await fetch('/api/memory', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          latestMessage: latestUserMessage,
+          currentMemory: profileMemory(),
+          recentMessages,
+          time: timestamp,
+          sign: await generateSignature({
+            t: timestamp,
+            m: latestUserMessage,
+          }),
+        }),
+      })
+
+      if (!response.ok) {
+        console.error(
+          'Memory update failed:',
+          await response.text(),
+        )
+        return
+      }
+
+      const data = await response.json()
+
+      if (data?.memory)
+        await saveMemory(data.memory)
+    }
+    catch (err) {
+      console.error('Failed to update long-term memory:', err)
+    }
+  }
+
+  // -------------------------
+  // 既存ログから初回の長期記憶を作る
+  // -------------------------
+
+  const bootstrapMemoryFromOldMessages = async() => {
+    // すでに長期記憶があるなら何もしない
+    if (profileMemory())
+      return
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user)
+        return
+
+      // 最初の移行時だけ、最近の保存済みログを読む
+      const { data: oldMessages, error } = await supabase
+        .from('messages')
+        .select('role, content, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (error) {
+        console.error('Failed to load old messages:', error)
+        return
+      }
+
+      if (!oldMessages || oldMessages.length === 0)
+        return
+
+      const recentMessages = [...oldMessages]
+        .reverse()
+        .map(item => ({
+          role: item.role,
+          content: item.content,
+        }))
+
+      const latestUserMessage = [...recentMessages]
+        .reverse()
+        .find(message => message.role === 'user')
+        ?.content
+
+      if (!latestUserMessage)
+        return
+
+      const timestamp = Date.now()
+
+      const response = await fetch('/api/memory', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          latestMessage: latestUserMessage,
+          currentMemory: '',
+          recentMessages,
+          time: timestamp,
+          sign: await generateSignature({
+            t: timestamp,
+            m: latestUserMessage,
+          }),
+        }),
+      })
+
+      if (!response.ok) {
+        console.error(
+          'Initial memory creation failed:',
+          await response.text(),
+        )
+        return
+      }
+
+      const data = await response.json()
+
+      if (data?.memory)
+        await saveMemory(data.memory)
+    }
+    catch (err) {
+      console.error('Failed to bootstrap memory:', err)
+    }
   }
 
   // -------------------------
@@ -320,7 +474,7 @@ export default () => {
       let confirmed = profile?.name_confirmed || false
       const memory = profile?.memory || ''
 
-      // 初回はGoogleアカウント名を仮の呼び名として保存
+      // 初回はGoogleアカウント名を仮名として保存
       if (!displayName) {
         displayName
           = user.user_metadata?.full_name
@@ -348,28 +502,10 @@ export default () => {
       setNameConfirmed(confirmed)
       setProfileMemory(memory)
 
-      // 過去ログは画面には表示しない
-      // 直近だけAIの文脈として裏で保持
-      const { data: oldMessages, error: historyError } = await supabase
-        .from('messages')
-        .select('role, content, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(maxHistoryMessages)
-
-      if (historyError) {
-        console.error('Failed to load history:', historyError)
-      }
-      else if (oldMessages) {
-        const history = [...oldMessages]
-          .reverse()
-          .map(item => ({
-            role: item.role,
-            content: item.content,
-          })) as ChatMessage[]
-
-        setHiddenHistory(history)
-      }
+      // 既存ユーザーでmemoryがまだ空なら、
+      // 過去ログから一度だけ長期記憶を作る
+      if (!memory)
+        await bootstrapMemoryFromOldMessages()
 
       const greeting = getJapaneseGreeting()
 
@@ -386,6 +522,7 @@ export default () => {
           + 'それとも、ニックネームや別の呼び名がありますか？'
       }
 
+      // 過去ログは表示しない
       setMessageList([
         {
           role: 'assistant',
@@ -472,10 +609,10 @@ export default () => {
 
     await saveMessage('user', inputValue)
 
-    // 初回確認・途中変更の両方に対応
+    // 初回でも途中でも呼び名変更を確認
     await updateNamePreference(inputValue)
 
-    await requestWithLatestMessage()
+    await requestWithLatestMessage(inputValue)
 
     instantToBottom()
   }
@@ -495,10 +632,12 @@ export default () => {
   }
 
   // -------------------------
-  // AIリクエスト
+  // AIへ会話リクエスト
   // -------------------------
 
-  const requestWithLatestMessage = async() => {
+  const requestWithLatestMessage = async(
+    latestUserMessage: string,
+  ) => {
     setLoading(true)
     setCurrentAssistantMessage('')
     setCurrentError(null)
@@ -509,32 +648,29 @@ export default () => {
       const controller = new AbortController()
       setController(controller)
 
-      // 最初の自動挨拶はAIに渡さない
-      const visibleMessages = messageList().filter((message, index) => {
-        return index !== 0
-      })
+      // 今回の画面で交わしている会話だけ。
+      // 過去ログそのものは送らない。
+      const currentConversation = messageList()
+        .filter((message, index) => index !== 0)
+        .slice(-maxHistoryMessages)
 
-      const allMessages = [
-        ...hiddenHistory(),
-        ...visibleMessages,
+      const requestMessageList = [
+        ...currentConversation,
       ]
-
-      const requestMessageList
-        = allMessages.slice(-maxHistoryMessages)
 
       let profileContext = ''
 
-      // 現在の確定済み呼び名を最優先
+      // 現在の呼び名を伝える
       if (nameConfirmed() && profileName()) {
         profileContext +=
           `このユーザーの現在の希望する呼び名は「${formatDisplayName(profileName())}」。`
-          + '以前の会話に別の呼び名が書かれていても無視し、必ず現在の呼び名を使ってください。'
-          + 'ユーザーが会話中に新しい呼び名を希望した場合は、その新しい呼び名を尊重してください。'
+          + '以前の情報に別の呼び名があっても、現在の呼び名を優先してください。'
       }
 
+      // 長期記憶を伝える
       if (profileMemory()) {
         profileContext +=
-          `\nこのユーザーについて記憶していること:\n${profileMemory()}`
+          `\n\nこのユーザーについて長期的に記憶していること:\n${profileMemory()}`
       }
 
       if (currentSystemRoleSettings()) {
@@ -559,10 +695,7 @@ export default () => {
           pass: storagePassword,
           sign: await generateSignature({
             t: timestamp,
-            m:
-              requestMessageList?.[
-                requestMessageList.length - 1
-              ]?.content || '',
+            m: latestUserMessage,
           }),
           temperature: temperature(),
         }),
@@ -625,7 +758,7 @@ export default () => {
       return
     }
 
-    await archiveCurrentMessage()
+    await archiveCurrentMessage(latestUserMessage)
 
     if (isStick())
       instantToBottom()
@@ -635,7 +768,9 @@ export default () => {
   // AI返答確定
   // -------------------------
 
-  const archiveCurrentMessage = async() => {
+  const archiveCurrentMessage = async(
+    latestUserMessage: string,
+  ) => {
     const assistantMessage = currentAssistantMessage()
 
     if (!assistantMessage)
@@ -654,6 +789,13 @@ export default () => {
       assistantMessage,
     )
 
+    // 会話が1往復終わるたび、
+    // 長期記憶を静かに更新
+    await updateLongTermMemory(
+      latestUserMessage,
+      assistantMessage,
+    )
+
     setCurrentAssistantMessage('')
     setLoading(false)
     setController(null)
@@ -668,7 +810,7 @@ export default () => {
 
   // -------------------------
   // この会話をリセット
-  // 保存済みプロフィール・過去ログは消さない
+  // 名前・長期記憶・保存ログは消さない
   // -------------------------
 
   const clear = () => {
@@ -695,7 +837,13 @@ export default () => {
   const stopStreamFetch = () => {
     if (controller()) {
       controller().abort()
-      archiveCurrentMessage()
+
+      const latestUserMessage = [...messageList()]
+        .reverse()
+        .find(message => message.role === 'user')
+        ?.content || ''
+
+      archiveCurrentMessage(latestUserMessage)
     }
   }
 
@@ -707,7 +855,13 @@ export default () => {
       if (lastMessage.role === 'assistant')
         setMessageList(messageList().slice(0, -1))
 
-      requestWithLatestMessage()
+      const latestUserMessage = [...messageList()]
+        .reverse()
+        .find(message => message.role === 'user')
+        ?.content || ''
+
+      if (latestUserMessage)
+        requestWithLatestMessage(latestUserMessage)
     }
   }
 
