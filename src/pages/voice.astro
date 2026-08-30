@@ -165,6 +165,64 @@ import Layout from '../layouts/Layout.astro'
   let loginDisplayName = ''
   let memory = ''
 
+
+  /*
+   * =========================
+   * 呼び名の敬称処理
+   *
+   * 敬称が付いていない場合だけ
+   * 「さん」を付ける
+   * =========================
+   */
+
+  function addHonorific(name) {
+
+    const trimmedName =
+      typeof name === 'string'
+        ? name.trim()
+        : ''
+
+
+    if (!trimmedName) {
+      return 'お客様'
+    }
+
+
+    /*
+     * 「お客様」はそのまま
+     */
+    if (
+      trimmedName === 'お客様'
+    ) {
+
+      return trimmedName
+    }
+
+
+    /*
+     * すでに敬称が付いている場合は
+     * そのまま使用
+     */
+    const hasHonorific =
+      /(?:さん|くん|君|ちゃん|先生|さま|様|氏)$/
+        .test(
+          trimmedName
+        )
+
+
+    if (hasHonorific) {
+
+      return trimmedName
+    }
+
+
+    /*
+     * 敬称がない場合だけ
+     * 「さん」を付ける
+     */
+    return `${trimmedName}さん`
+  }
+
   /*
    * ログイン中ユーザー
    */
@@ -1236,8 +1294,23 @@ import Layout from '../layouts/Layout.astro'
 
 
       /*
+       * =========================
        * けいが呼ぶ名前
+       * =========================
+       *
+       * profiles.display_name を最優先。
+       *
+       * 「中村」のように敬称なしで
+       * 登録されている場合は
+       * 「中村さん」にする。
+       *
+       * 「ショウくん」
+       * 「けいちゃん」
+       * 「山田先生」
+       * など、すでに敬称がある場合は
+       * そのまま使う。
        */
+
       if (
         profile?.display_name &&
         profile
@@ -1246,13 +1319,31 @@ import Layout from '../layouts/Layout.astro'
       ) {
 
         displayName =
-          profile
-            .display_name
-            .trim()
+          addHonorific(
+            profile
+              .display_name
+              .trim()
+          )
 
       } else {
 
-        displayName =
+        /*
+         * profileがまだ無い場合は
+         * Auth metadataから取得。
+         *
+         * メール登録時に保存している
+         * display_name / nickname も
+         * ここで拾う。
+         */
+        const fallbackName =
+          user
+            .user_metadata
+            ?.display_name ||
+
+          user
+            .user_metadata
+            ?.nickname ||
+
           user
             .user_metadata
             ?.full_name ||
@@ -1266,6 +1357,12 @@ import Layout from '../layouts/Layout.astro'
             ?.split('@')[0] ||
 
           'お客様'
+
+
+        displayName =
+          addHonorific(
+            fallbackName
+          )
       }
 
 
