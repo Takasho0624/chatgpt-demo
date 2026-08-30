@@ -6,6 +6,11 @@ import '../message.css'
 
   <picture class="kei-header-picture">
 
+    <source
+      media="(max-width: 768px)"
+      srcset="/kei-bar-title-mobile.png"
+    />
+
     <img
       src="/kei-bar-title.png"
       alt="GPT VOICE 体験 けいのBAR"
@@ -76,17 +81,17 @@ import '../message.css'
 
 
   .kei-header-image {
-    height: 150px;
+    width: 100%;
+
+    height: auto;
+
+    max-height: none;
 
     border-radius: 12px;
 
-    object-fit: cover;
+    object-fit: contain;
 
-    /*
-     * 左のタイトルと右のけいを
-     * 両方なるべく残す
-     */
-    object-position: center center;
+    object-position: center;
   }
 
 }
