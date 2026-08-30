@@ -143,7 +143,17 @@ import Layout from '../layouts/Layout.astro'
 
     </section>
 
-  </main>
+  
+    <!-- VOICE試用モード切替 -->
+    <button
+      id="trial-mode-button"
+      type="button"
+      class="trial-mode-button"
+    >
+      試用モード：ON（10分）
+    </button>
+
+</main>
 </Layout>
 
 
@@ -1776,7 +1786,87 @@ Web検索がうまくいきませんでした。
    * =========================
    */
 
+  // VOICE_TRIAL_TIMER_START
+  let voiceTrialMode = true
+  let voiceTrialStarted = false
+  let voiceTrialExpired = false
+  let voiceTrialWarningTimer = null
+  let voiceTrialEndTimer = null
+
+  const trialModeButton =
+    document.getElementById('trial-mode-button')
+
+  function updateVoiceTrialButton() {
+    if (!trialModeButton)
+      return
+
+    trialModeButton.textContent =
+      voiceTrialMode
+        ? '試用モード：ON（10分）'
+        : '試用モード：OFF（無制限）'
+  }
+
+  function clearVoiceTrialTimers() {
+    if (voiceTrialWarningTimer) {
+      clearTimeout(voiceTrialWarningTimer)
+      voiceTrialWarningTimer = null
+    }
+
+    if (voiceTrialEndTimer) {
+      clearTimeout(voiceTrialEndTimer)
+      voiceTrialEndTimer = null
+    }
+  }
+
+  function startVoiceTrialTimer() {
+    if (!voiceTrialMode || voiceTrialStarted)
+      return
+
+    voiceTrialStarted = true
+
+    // テスト用：10秒後に警告
+    voiceTrialWarningTimer = setTimeout(() => {
+      if (status)
+        status.textContent = '⏱ 試用時間は残り1分です。'
+    }, 10 * 1000)
+
+    // テスト用：15秒後に終了
+    voiceTrialEndTimer = setTimeout(() => {
+      voiceTrialExpired = true
+
+      stopVoice()
+
+      if (status)
+        status.textContent =
+          '試用時間が終了しました。ご利用ありがとうございました。'
+
+      if (voiceButton)
+        voiceButton.disabled = true
+    }, 15 * 1000)
+  }
+
+  trialModeButton?.addEventListener('click', () => {
+    voiceTrialMode = !voiceTrialMode
+
+    if (!voiceTrialMode) {
+      clearVoiceTrialTimers()
+      voiceTrialStarted = false
+      voiceTrialExpired = false
+
+      if (voiceButton)
+        voiceButton.disabled = false
+    }
+
+    updateVoiceTrialButton()
+  })
+  // VOICE_TRIAL_TIMER_END
+
   async function startVoice() {
+    if (voiceTrialMode && voiceTrialExpired)
+      return
+
+    startVoiceTrialTimer()
+
 
     try {
 

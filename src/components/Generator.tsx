@@ -66,7 +66,7 @@ export default () => {
     setTrialStarted(true)
 
     trialWarningTimer = setTimeout(() => {
-      setTrialNotice('⏱ 試用時間は残り1分です。')
+      setTrialNotice('⚠️ 試用時間は残り1分です。')
     }, 9 * 60 * 1000)
 
     trialEndTimer = setTimeout(() => {
@@ -1912,10 +1912,13 @@ export default () => {
                 'text-align': 'center',
                 'font-weight': 'bold',
                 'margin-bottom': '10px',
-                color: trialExpired() ? '#dc2626' : 'inherit',
               }}
             >
-              {trialNotice()}
+              <span
+                style={`color: ${trialExpired() ? '#dc2626' : '#facc15'} !important;`}
+              >
+                {trialNotice()}
+              </span>
             </div>
           </Show>
 
@@ -2053,3 +2056,13 @@ export default () => {
   )
 
 }
+
+<style>
+  .trial-warning {
+    color: #facc15 !important;
+  }
+
+  .trial-ended {
+    color: #dc2626 !important;
+  }
+</style>
