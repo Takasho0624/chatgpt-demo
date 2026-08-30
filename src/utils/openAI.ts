@@ -68,10 +68,11 @@ export const parseOpenAIStream = (rawResponse: Response) => {
                 controller.enqueue(encoder.encode(text))
               }
 
-              if (json.type === 'response.completed') {
-                controller.close()
-                return
-              }
+if (json.type === 'response.completed') {
+  console.log('OPENAI USAGE:', json.response?.usage)
+  controller.close()
+  return
+}
             } catch {
               // 不完全なイベントは無視
             }
