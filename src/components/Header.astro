@@ -1,18 +1,94 @@
 ---
-import { model } from '../utils/openAI'
-import Logo from './Logo.astro'
 import '../message.css'
 ---
 
-<header>
-  <div class="fb items-center">
-    <Logo />
-  </div>
-<div class="fi mt-2">
-  <span class="gpt-title">けいのバー</span>
-  <span class="gpt-subtitle">@麹町</span>
-</div>
-<p class="mt-2 text-white font-semibold italic">「こんばんは。けいです。今夜もゆっくりしていってね」</p>
+<header class="kei-header">
 
+  <picture class="kei-header-picture">
+
+    <img
+      src="/kei-bar-title.png"
+      alt="GPT VOICE 体験 けいのBAR"
+      class="kei-header-image"
+    />
+
+  </picture>
 
 </header>
+
+<style>
+
+.kei-header {
+  width: 100%;
+  margin: 0 0 24px;
+}
+
+
+.kei-header-picture {
+  display: block;
+  width: 100%;
+}
+
+
+.kei-header-image {
+  display: block;
+  width: 100%;
+  height: auto;
+
+  border-radius: 18px;
+
+  object-fit: cover;
+  object-position: center;
+
+  box-shadow:
+    0 14px 36px
+    rgba(
+      0,
+      0,
+      0,
+      .28
+    );
+}
+
+
+/* =========================
+   PC
+   ========================= */
+
+@media (min-width: 769px) {
+
+  .kei-header-image {
+    max-height: 310px;
+  }
+
+}
+
+
+/* =========================
+   スマホ
+   ========================= */
+
+@media (max-width: 768px) {
+
+  .kei-header {
+    margin-bottom: 16px;
+  }
+
+
+  .kei-header-image {
+    height: 150px;
+
+    border-radius: 12px;
+
+    object-fit: cover;
+
+    /*
+     * 左のタイトルと右のけいを
+     * 両方なるべく残す
+     */
+    object-position: center center;
+  }
+
+}
+
+</style>
