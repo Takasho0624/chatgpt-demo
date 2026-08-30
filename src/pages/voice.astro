@@ -2485,10 +2485,59 @@ Web検索がうまくいきませんでした。
                 'response.done'
               ) {
 
+                const usage =
+                  message.response?.usage
+
                 console.log(
                   'VOICE USAGE:',
-                  message.response?.usage
+                  usage
                 )
+
+                if (usage?.total_tokens) {
+                  try {
+                    const {
+                      data: { session },
+                    } =
+                      await supabase.auth.getSession()
+
+                    const usageResponse =
+                      await fetch(
+                        '/api/voice-usage',
+                        {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type':
+                              'application/json',
+                            ...(session?.access_token
+                              ? {
+                                  Authorization:
+                                    `Bearer ${session.access_token}`,
+                                }
+                              : {}),
+                          },
+                          body: JSON.stringify({
+                            input_tokens:
+                              usage.input_tokens || 0,
+                            output_tokens:
+                              usage.output_tokens || 0,
+                            total_tokens:
+                              usage.total_tokens || 0,
+                          }),
+                        }
+                      )
+
+                    if (!usageResponse.ok) {
+                      console.error(
+                        'VOICE TOKEN SAVE FAILED'
+                      )
+                    }
+                  } catch (error) {
+                    console.error(
+                      'VOICE TOKEN SAVE ERROR:',
+                      error
+                    )
+                  }
+                }
 
                 const hasFunctionCall =
                   Array.isArray(
