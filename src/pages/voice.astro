@@ -1824,13 +1824,13 @@ Web検索がうまくいきませんでした。
 
     voiceTrialStarted = true
 
-    // テスト用：10秒後に警告
+    // 9分後に残り1分を警告
     voiceTrialWarningTimer = setTimeout(() => {
       if (status)
         status.textContent = '⏱ 試用時間は残り1分です。'
-    }, 10 * 1000)
+    }, 9 * 60 * 1000)
 
-    // テスト用：15秒後に終了
+    // 10分後に終了
     voiceTrialEndTimer = setTimeout(() => {
       voiceTrialExpired = true
 
@@ -1842,7 +1842,7 @@ Web検索がうまくいきませんでした。
 
       if (voiceButton)
         voiceButton.disabled = true
-    }, 15 * 1000)
+    }, 10 * 60 * 1000)
   }
 
   trialModeButton?.addEventListener('click', () => {
@@ -2484,6 +2484,11 @@ Web検索がうまくいきませんでした。
                 message.type ===
                 'response.done'
               ) {
+
+                console.log(
+                  'VOICE USAGE:',
+                  message.response?.usage
+                )
 
                 const hasFunctionCall =
                   Array.isArray(
