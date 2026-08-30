@@ -2056,13 +2056,3 @@ export default () => {
   )
 
 }
-
-<style>
-  .trial-warning {
-    color: #facc15 !important;
-  }
-
-  .trial-ended {
-    color: #dc2626 !important;
-  }
-</style>
