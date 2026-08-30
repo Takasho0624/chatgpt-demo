@@ -38,15 +38,62 @@ export const post: APIRoute = async ({ request }) => {
 
     /*
      * =========================
+     * 呼び名の敬称処理
+     *
+     * 敬称が付いていない場合だけ
+     * 「さん」を自動で付ける
+     * =========================
+     */
+
+    const addHonorific = (
+      name: string,
+    ) => {
+      const trimmedName =
+        name.trim()
+
+
+      if (!trimmedName) {
+        return 'お客様'
+      }
+
+
+      /*
+       * すでに敬称が付いている場合は
+       * そのまま使用
+       */
+      const hasHonorific =
+        /(?:さん|くん|君|ちゃん|先生|さま|様|氏)$/
+          .test(
+            trimmedName,
+          )
+
+
+      if (hasHonorific) {
+        return trimmedName
+      }
+
+
+      return `${trimmedName}さん`
+    }
+
+
+    /*
+     * =========================
      * お客様の呼び名
      * =========================
      */
 
-    const displayName =
+    const rawDisplayName =
       typeof body.displayName === 'string'
       && body.displayName.trim()
         ? body.displayName.trim()
         : 'お客様'
+
+
+    const displayName =
+      addHonorific(
+        rawDisplayName,
+      )
 
 
     /*
@@ -178,6 +225,13 @@ ${currentHour !== null
 自然な場面で使ってください。
 
 毎回名前を呼ぶ必要はありません。
+
+呼び名については、
+ここに指定された表記をそのまま使ってください。
+
+指定された呼び名から
+敬称を外したり、
+勝手に呼び捨てにしたりしないでください。
 
 
 【ボイスでの話し方】
