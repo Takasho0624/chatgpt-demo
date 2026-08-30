@@ -17,6 +17,23 @@ const sitePassword = import.meta.env.SITE_PASSWORD || ''
 const passList = sitePassword.split(',') || []
 
 export const post: APIRoute = async (context) => {
+  let authenticatedUserId: string | null = null
+
+  const authorization = context.request.headers.get('authorization')
+
+  if (authorization?.startsWith('Bearer ')) {
+    const accessToken = authorization.slice(7)
+
+    const { data: { user }, error: authError }
+      = await supabase.auth.getUser(accessToken)
+
+    if (authError) {
+      console.error('SUPABASE AUTH ERROR:', authError)
+    } else if (user) {
+      authenticatedUserId = user.id
+    }
+  }
+
   const body = await context.request.json();
   const { sign, time, messages, pass, temperature } = body;
 
@@ -184,6 +201,7 @@ AIであることを隠す必要はないが、必要もないのにAIである�
     const { error } = await supabase
       .from('token_usage')
       .insert({
+        user_id: authenticatedUserId,
         mode: 'text',
         input_tokens: usage.input_tokens || 0,
         output_tokens: usage.output_tokens || 0,
