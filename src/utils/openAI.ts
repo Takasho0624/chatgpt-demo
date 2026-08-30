@@ -24,7 +24,10 @@ export const generatePayload = (
   }),
 })
 
-export const parseOpenAIStream = (rawResponse: Response) => {
+export const parseOpenAIStream = (
+  rawResponse: Response,
+  onUsage?: (usage: any) => void | Promise<void>,
+) => {
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
@@ -70,6 +73,11 @@ export const parseOpenAIStream = (rawResponse: Response) => {
 
 if (json.type === 'response.completed') {
   console.log('OPENAI USAGE:', json.response?.usage)
+
+  if (json.response?.usage && onUsage) {
+    await onUsage(json.response.usage)
+  }
+
   controller.close()
   return
 }

@@ -3,7 +3,12 @@ import { ProxyAgent, fetch } from 'undici'
 // #vercel-end
 import { generatePayload, parseOpenAIStream } from '@/utils/openAI'
 import { verifySignature } from '@/utils/auth'
+import { createClient } from '@supabase/supabase-js'
 import type { APIRoute } from 'astro'
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY,
+)
 
 const apiKey = import.meta.env.OPENAI_API_KEY
 const httpsProxy = import.meta.env.HTTPS_PROXY
@@ -173,5 +178,18 @@ AIであることを隠す必要はないが、必要もないのにAIである�
     }), { status: 500 })
   }) as Response
 
-  return parseOpenAIStream(response) as Response
+  return parseOpenAIStream(response, async (usage) => {
+    console.log('TOKEN SAVE START', usage)
+
+    const { error } = await supabase
+      .from('token_usage')
+      .insert({
+        mode: 'text',
+        input_tokens: usage.input_tokens || 0,
+        output_tokens: usage.output_tokens || 0,
+        total_tokens: usage.total_tokens || 0,
+      })
+
+    if (error) console.error('TOKEN USAGE SAVE ERROR:', error)
+  }) as Response
 }
