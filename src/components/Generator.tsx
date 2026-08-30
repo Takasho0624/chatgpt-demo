@@ -46,6 +46,50 @@ export default () => {
 
   const [temperature, setTemperature] = createSignal(0.6)
 
+  // -------------------------
+  // 試用版10分タイマー
+  // -------------------------
+  // true = 10分試用版 / false = 時間制限なし
+  const [trialMode, setTrialMode] = createSignal(true)
+
+  const [trialStarted, setTrialStarted] = createSignal(false)
+  const [trialExpired, setTrialExpired] = createSignal(false)
+  const [trialNotice, setTrialNotice] = createSignal('')
+
+  let trialWarningTimer: ReturnType<typeof setTimeout> | undefined
+  let trialEndTimer: ReturnType<typeof setTimeout> | undefined
+
+  const startTrialTimer = () => {
+    if (!trialMode() || trialStarted())
+      return
+
+    setTrialStarted(true)
+
+    trialWarningTimer = setTimeout(() => {
+      setTrialNotice('⏱ 試用時間は残り1分です。')
+    }, 9 * 60 * 1000)
+
+    trialEndTimer = setTimeout(() => {
+      setTrialExpired(true)
+
+      const activeController = controller()
+      if (activeController)
+        activeController.abort()
+
+      setLoading(false)
+
+      setTrialNotice('試用時間が終了しました。ご利用ありがとうございました。')
+    }, 10 * 60 * 1000)
+  }
+
+  onCleanup(() => {
+    if (trialWarningTimer)
+      clearTimeout(trialWarningTimer)
+
+    if (trialEndTimer)
+      clearTimeout(trialEndTimer)
+  })
+
   const temperatureSetting = (value: number) => {
 
     setTemperature(value)
@@ -1091,6 +1135,10 @@ export default () => {
   // -------------------------
 
   const handleButtonClick = async() => {
+    if (trialMode() && trialExpired())
+      return
+
+    startTrialTimer()
 
     const inputValue = inputRef.value.trim()
 
@@ -1857,6 +1905,20 @@ export default () => {
 
         >
 
+          <Show when={trialNotice()}>
+            <div
+              style={{
+                width: '100%',
+                'text-align': 'center',
+                'font-weight': 'bold',
+                'margin-bottom': '10px',
+                color: trialExpired() ? '#dc2626' : 'inherit',
+              }}
+            >
+              {trialNotice()}
+            </div>
+          </Show>
+
           <textarea
 
             ref={inputRef!}
@@ -1931,7 +1993,26 @@ export default () => {
 
       </Show>
 
-      <div
+            <div
+        class="fixed bottom-5 right-5"
+        style={{ 'z-index': '50' }}
+      >
+        <button
+          type="button"
+          onClick={() => setTrialMode(!trialMode())}
+          gen-slate-btn
+          style={{
+            'font-size': '12px',
+            opacity: '0.75',
+          }}
+        >
+          {trialMode()
+            ? '試用モード：ON（10分）'
+            : '試用モード：OFF（無制限）'}
+        </button>
+      </div>
+
+<div
 
         class="fixed bottom-5 left-5 rounded-md hover:bg-slate/10 w-fit h-fit transition-colors active:scale-90"
 
