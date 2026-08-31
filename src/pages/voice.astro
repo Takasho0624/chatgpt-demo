@@ -534,6 +534,36 @@ import Layout from '../layouts/Layout.astro'
   }
 
 
+  /*
+   * =========================
+   * 会話中のメニュー再表示
+   * =========================
+   */
+
+  function reopenCocktailMenu() {
+
+    /*
+     * 今テーブルにあるカクテルを片付ける
+     */
+    if (servedCocktail) {
+      servedCocktail.hidden = true
+      servedCocktail.src = ''
+      servedCocktail.alt = ''
+    }
+
+    /*
+     * けいは表示したまま
+     * メニュー横の位置へ移動
+     */
+    if (keiAvatar) {
+      keiAvatar.style.visibility = 'visible'
+      keiAvatar.style.opacity = '1'
+    }
+
+    showCocktailMenu()
+  }
+
+
   function serveCocktail(
     number
   ) {
@@ -2512,6 +2542,20 @@ Web検索がうまくいきませんでした。
                     transcript,
                     `user:${itemId}`
                   )
+
+
+                  /*
+                   * 会話中に「メニュー」と言われたら
+                   * カクテルを片付けてメニューを再表示
+                   */
+                  if (
+                    transcript.includes(
+                      'メニュー'
+                    )
+                  ) {
+
+                    reopenCocktailMenu()
+                  }
                 }
               }
 
@@ -2697,66 +2741,37 @@ Web検索がうまくいきませんでした。
                   /* 注文確定後、メニューを閉じる */
                   hideCocktailMenu()
 
-                  /* 以前のカクテルがあれば一旦消す */
+                  /* 以前のカクテルを一旦消す */
                   if (servedCocktail) {
                     servedCocktail.hidden = true
                   }
 
-                  /* けいを一旦消す */
+                  /* けいも一旦消す */
                   if (keiAvatar) {
                     keiAvatar.style.opacity = '0'
                     keiAvatar.style.visibility = 'hidden'
                   }
 
-                  /* 1秒間、カクテルを作っている間 */
+                  /* カクテルを作っている1秒間 */
                   await new Promise(
                     resolve => setTimeout(resolve, 1000)
                   )
 
-                  /* カクテルを表示 */
-                  /* 注文確定後、メニューを閉じる */
-                  hideCocktailMenu()
-
-                  /* 以前のカクテルがあれば一旦消す */
-                  if (servedCocktail) {
-                    servedCocktail.hidden = true
-                  }
-
-                  /* けいを一旦消す */
-                  if (keiAvatar) {
-                    keiAvatar.style.opacity = '0'
-                    keiAvatar.style.visibility = 'hidden'
-                  }
-
-                  /* 1秒間、カクテルを作っている間 */
-                  await new Promise(
-                    resolve => setTimeout(resolve, 1000)
-                  )
-
-                  /* カクテルを表示 */
+                  /* 注文されたカクテルを表示 */
                   const cocktail =
                     serveCocktail(
                       number
                     )
 
-                  /* けいを中央に戻して同時に表示 */
+                  /*
+                   * けいを中央へ戻して
+                   * カクテルと同時に表示
+                   */
                   if (keiAvatar) {
                     keiAvatar.classList.remove(
                       'kei-avatar--menu-open'
                     )
-                  
-                    keiAvatar.style.left = '50%'
-                    keiAvatar.style.maxWidth = '86%'
-                    keiAvatar.style.visibility = 'visible'
-                    keiAvatar.style.opacity = '1'
-                  }
 
-                  /* けいを中央に戻して同時に表示 */
-                  if (keiAvatar) {
-                    keiAvatar.classList.remove(
-                      'kei-avatar--menu-open'
-                    )
-                  
                     keiAvatar.style.left = '50%'
                     keiAvatar.style.maxWidth = '86%'
                     keiAvatar.style.visibility = 'visible'
