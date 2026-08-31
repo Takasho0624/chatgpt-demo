@@ -101,6 +101,42 @@ import Layout from '../layouts/Layout.astro'
         />
 
 
+        
+        <!-- =========================
+             カクテルメニュー
+             ========================= -->
+        <div
+          id="cocktail-menu"
+          class="cocktail-menu"
+          hidden
+        >
+          <img
+            src="/cocktails/cocktail-menu.png"
+            alt="スタンダードカクテルメニュー"
+            class="cocktail-menu__image"
+          />
+
+          <button
+            id="cocktail-menu-close"
+            class="cocktail-menu__close"
+            type="button"
+            aria-label="メニューを閉じる"
+          >
+            ×
+          </button>
+        </div>
+
+        <!-- =========================
+             提供されたカクテル
+             ========================= -->
+        <img
+          id="served-cocktail"
+          class="served-cocktail"
+          src=""
+          alt=""
+          hidden
+        />
+
         <!-- 初回待機中だけ表示 -->
         <div
           id="kei-state"
@@ -372,6 +408,169 @@ import Layout from '../layouts/Layout.astro'
   const keiAvatar =
     document.getElementById(
       'kei-avatar'
+    )
+
+
+
+  /*
+   * =========================
+   * カクテルメニュー
+   * =========================
+   */
+
+  const cocktailMenu =
+    document.getElementById(
+      'cocktail-menu'
+    )
+
+  const cocktailMenuClose =
+    document.getElementById(
+      'cocktail-menu-close'
+    )
+
+  const servedCocktail =
+    document.getElementById(
+      'served-cocktail'
+    )
+
+  const cocktails = {
+    1: {
+      name: 'マティーニ',
+      src: '/cocktails/1_martini.png',
+    },
+
+    2: {
+      name: 'マンハッタン',
+      src: '/cocktails/2_manhattan.png',
+    },
+
+    3: {
+      name: 'ギムレット',
+      src: '/cocktails/3_gimlet.png',
+    },
+
+    4: {
+      name: 'ダイキリ',
+      src: '/cocktails/4_daiquiri.png',
+    },
+
+    5: {
+      name: 'サイドカー',
+      src: '/cocktails/5_sidecar.png',
+    },
+
+    6: {
+      name: 'ホワイトレディ',
+      src: '/cocktails/6_white-lady.png',
+    },
+
+    7: {
+      name: 'ネグローニ',
+      src: '/cocktails/7_negroni.png',
+    },
+
+    8: {
+      name: 'オールドファッションド',
+      src: '/cocktails/8_old-fashioned.png',
+    },
+
+    9: {
+      name: 'ジントニック',
+      src: '/cocktails/9_gin-tonic.png',
+    },
+
+    10: {
+      name: 'モスコミュール',
+      src: '/cocktails/10_moscow-mule.png',
+    },
+
+    11: {
+      name: 'カシスオレンジ',
+      src: '/cocktails/11_cassis-orange.png',
+    },
+
+    12: {
+      name: 'ファジーネーブル',
+      src: '/cocktails/12_fuzzy-navel.png',
+    },
+  }
+
+
+  function showCocktailMenu() {
+
+    if (!cocktailMenu) {
+      return
+    }
+
+    cocktailMenu.hidden =
+      false
+
+    if (keiAvatar) {
+      keiAvatar.classList.add('kei-avatar--menu-open')
+    }
+  }
+
+
+  function hideCocktailMenu() {
+
+    if (!cocktailMenu) {
+      return
+    }
+
+    cocktailMenu.hidden =
+      true
+
+    if (keiAvatar) {
+      keiAvatar.classList.remove('kei-avatar--menu-open')
+    }
+
+    if (keiAvatar) {
+      keiAvatar.style.left =
+        '50%'
+
+      keiAvatar.style.maxWidth =
+        '86%'
+    }
+  }
+
+
+  function serveCocktail(
+    number
+  ) {
+
+    const cocktail =
+      cocktails[number]
+
+    if (
+      !cocktail ||
+      !servedCocktail
+    ) {
+
+      return null
+    }
+
+
+    hideCocktailMenu()
+
+
+    servedCocktail.src =
+      cocktail.src
+
+    servedCocktail.alt =
+      cocktail.name
+
+    servedCocktail.hidden =
+      false
+
+
+    return cocktail
+  }
+
+
+  cocktailMenuClose
+    ?.addEventListener(
+      'click',
+      hideCocktailMenu
     )
 
 
@@ -2138,6 +2337,9 @@ Web検索がうまくいきませんでした。
         .onopen =
           () => {
 
+            /* COCKTAIL_MENU_OPENING_ADDED */
+            showCocktailMenu()
+
             setKeiState('')
 
 
@@ -2184,6 +2386,20 @@ Web検索がうまくいきませんでした。
 
                     instructions: `
 お客様が来店しました。
+
+現在、画面にはスタンダードカクテルのメニューが表示されています。
+
+時間帯に合った自然な挨拶をしたあと、
+続けてメニューについて短く案内してください。
+
+案内は、
+「こちらがスタンダードカクテルのメニューです。
+気になるものがあったら、名前か番号で言ってね。
+どんなカクテルかわからなかったら聞いてね。説明するから」
+という内容を、けいらしい自然な話し方で伝えてください。
+
+長々と説明せず、
+お客様が選んだり質問したりできるところで止めてください。
 
 現在の日本時間は
 「${openingJapanTime.text}」
@@ -2446,6 +2662,198 @@ Web検索がうまくいきませんでした。
 
 
                 setKeiState('')
+              }
+
+
+
+              /*
+               * =========================
+               * カクテル提供
+               * =========================
+               */
+
+              if (
+                message.type ===
+                  'response.function_call_arguments.done' &&
+                message.name ===
+                  'serve_cocktail'
+              ) {
+
+                try {
+
+                  const args =
+                    JSON.parse(
+                      message.arguments ||
+                        '{}'
+                    )
+
+
+                  const number =
+                    Number(
+                      args.cocktail_number
+                    )
+
+
+                  /* 注文確定後、メニューを閉じる */
+                  hideCocktailMenu()
+
+                  /* 以前のカクテルがあれば一旦消す */
+                  if (servedCocktail) {
+                    servedCocktail.hidden = true
+                  }
+
+                  /* けいを一旦消す */
+                  if (keiAvatar) {
+                    keiAvatar.style.opacity = '0'
+                    keiAvatar.style.visibility = 'hidden'
+                  }
+
+                  /* 1秒間、カクテルを作っている間 */
+                  await new Promise(
+                    resolve => setTimeout(resolve, 1000)
+                  )
+
+                  /* カクテルを表示 */
+                  /* 注文確定後、メニューを閉じる */
+                  hideCocktailMenu()
+
+                  /* 以前のカクテルがあれば一旦消す */
+                  if (servedCocktail) {
+                    servedCocktail.hidden = true
+                  }
+
+                  /* けいを一旦消す */
+                  if (keiAvatar) {
+                    keiAvatar.style.opacity = '0'
+                    keiAvatar.style.visibility = 'hidden'
+                  }
+
+                  /* 1秒間、カクテルを作っている間 */
+                  await new Promise(
+                    resolve => setTimeout(resolve, 1000)
+                  )
+
+                  /* カクテルを表示 */
+                  const cocktail =
+                    serveCocktail(
+                      number
+                    )
+
+                  /* けいを中央に戻して同時に表示 */
+                  if (keiAvatar) {
+                    keiAvatar.classList.remove(
+                      'kei-avatar--menu-open'
+                    )
+                  
+                    keiAvatar.style.left = '50%'
+                    keiAvatar.style.maxWidth = '86%'
+                    keiAvatar.style.visibility = 'visible'
+                    keiAvatar.style.opacity = '1'
+                  }
+
+                  /* けいを中央に戻して同時に表示 */
+                  if (keiAvatar) {
+                    keiAvatar.classList.remove(
+                      'kei-avatar--menu-open'
+                    )
+                  
+                    keiAvatar.style.left = '50%'
+                    keiAvatar.style.maxWidth = '86%'
+                    keiAvatar.style.visibility = 'visible'
+                    keiAvatar.style.opacity = '1'
+                  }
+
+
+                  if (
+                    cocktail &&
+                    dataChannel &&
+                    dataChannel.readyState ===
+                      'open'
+                  ) {
+
+                    /*
+                     * Function実行結果を
+                     * Realtime APIへ返す
+                     */
+
+                    dataChannel.send(
+                      JSON.stringify({
+                        type:
+                          'conversation.item.create',
+
+                        item: {
+                          type:
+                            'function_call_output',
+
+                          call_id:
+                            message.call_id,
+
+                          output:
+                            JSON.stringify({
+                              success:
+                                true,
+
+                              cocktail_number:
+                                number,
+
+                              cocktail_name:
+                                cocktail.name,
+                            }),
+                        },
+                      })
+                    )
+
+
+                    /*
+                     * 提供後に
+                     * けいから一言
+                     */
+
+                    dataChannel.send(
+                      JSON.stringify({
+                        type:
+                          'response.create',
+
+                        response: {
+                          instructions: `
+カクテルの提供が完了しました。
+
+まず
+「${cocktail.name}です。どうぞ」
+と自然に伝えてください。
+
+続けて、バーでくつろいでもらうような一言を添えて、
+自然に会話へ戻してください。
+
+たとえば
+「ゆっくり飲みながらね。今日は何の話しようか？」
+「ゆっくりしていってね。今日はどんな話する？」
+などです。
+
+ただし毎回同じ例文を使わず、
+それまでの会話やお客様の雰囲気に合わせて、
+けいらしい自然な言葉で短く問いかけてください。
+
+すでに話していた話題がある場合は、
+その話の続きへ自然に戻っても構いません。
+
+カクテルの長い説明は不要です。
+                          `.trim(),
+                        },
+                      })
+                    )
+                  }
+
+                } catch (error) {
+
+                  console.error(
+                    'serve_cocktail error:',
+                    error
+                  )
+                }
+
+
+                return
               }
 
 
@@ -3788,4 +4196,281 @@ Web検索がうまくいきませんでした。
   }
 }
 
+
+
+  /*
+   * =========================
+   * カクテルメニュー
+   * =========================
+   */
+
+  .cocktail-menu {
+    position: absolute;
+
+    inset: 12px;
+
+    z-index: 20;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    pointer-events: auto;
+  }
+
+
+  .cocktail-menu[hidden] {
+    display: none;
+  }
+
+
+  .cocktail-menu__image {
+    width: auto;
+
+    height: 100%;
+
+    max-width: 96%;
+
+    max-height: 96%;
+
+    object-fit: contain;
+
+    border-radius: 12px;
+
+    box-shadow:
+      0 16px 40px
+      rgba(0, 0, 0, 0.45);
+  }
+
+
+  .cocktail-menu__close {
+    position: absolute;
+
+    top: 12px;
+
+    right: 12px;
+
+    width: 38px;
+
+    height: 38px;
+
+    border: 0;
+
+    border-radius: 999px;
+
+    background:
+      rgba(20, 20, 20, 0.8);
+
+    color: white;
+
+    font-size: 26px;
+
+    line-height: 1;
+
+    cursor: pointer;
+  }
+
+
+  /*
+   * =========================
+   * 提供されたカクテル
+   * =========================
+   */
+
+  .served-cocktail {
+    position: absolute;
+
+    left: 50%;
+
+    bottom: 42px;
+
+    z-index: 3;
+
+    width: 220px;
+
+    max-height: 260px;
+
+    object-fit: contain;
+
+    transform:
+      translateX(-50%);
+
+    pointer-events: none;
+
+    filter:
+      drop-shadow(
+        0 12px 14px
+        rgba(0, 0, 0, 0.4)
+      );
+  }
+
+
+  .served-cocktail[hidden] {
+    display: none;
+  }
+
+
+  @media (
+    max-width: 640px
+  ) {
+
+    .cocktail-menu {
+      inset: 8px;
+    }
+
+
+    .served-cocktail {
+      bottom: 34px;
+
+      width: 165px;
+
+      max-height: 200px;
+    }
+  }
+
+
+  /* COCKTAIL_SIDE_LAYOUT */
+
+  /* けいを右へ寄せる */
+  .kei-avatar {
+    left: 78%;
+    width: 400px;
+    max-width: 62%;
+  }
+
+  /* メニューを左側へ */
+  .cocktail-menu {
+    justify-content: flex-start;
+    padding-left: 24px;
+    padding-right: 0;
+  }
+
+  .cocktail-menu__image {
+    width: auto;
+    height: 96%;
+    max-width: 76%;
+    max-height: 96%;
+    object-fit: contain;
+  }
+
+  /* 閉じるボタンもメニュー側へ */
+  .cocktail-menu__close {
+    top: 18px;
+    right: auto;
+    left: 55%;
+  }
+
+  @media (max-width: 640px) {
+    .kei-avatar {
+      left: 82%;
+      width: 300px;
+      max-width: 64%;
+    }
+
+    .cocktail-menu {
+      padding-left: 8px;
+    }
+
+    .cocktail-menu__image {
+      height: 96%;
+      max-width: 90%;
+      max-height: 96%;
+    }
+
+    .cocktail-menu__close {
+      top: 10px;
+      left: 61%;
+    }
+  }
+
 </style>
+
+<style>
+/* ===== KEI BAR POSITION FINAL ADJUSTMENT ===== */
+
+/* 通常時：けいは中央 */
+.kei-avatar {
+  left: 50% !important;
+  width: 430px;
+  max-width: 86%;
+}
+
+/* カクテル：小さくしてカウンターに置く */
+.served-cocktail {
+  width: 110px !important;
+  max-height: 145px !important;
+  bottom: 8px !important;
+}
+
+/* スマホ */
+@media (max-width: 640px) {
+  .kei-avatar {
+    left: 50% !important;
+    width: 330px;
+    max-width: 88%;
+  }
+
+  .served-cocktail {
+    width: 85px !important;
+    max-height: 115px !important;
+    bottom: 6px !important;
+  }
+}
+
+/* メニュー表示中だけ、けいを右へ */
+.kei-avatar.kei-avatar--menu-open {
+  left: 80% !important;
+  max-width: 68% !important;
+}
+
+@media (max-width: 640px) {
+  .kei-avatar.kei-avatar--menu-open {
+    left: 82% !important;
+    max-width: 70% !important;
+  }
+}
+
+</style>
+
+
+<style>
+/* ===== COCKTAIL COUNTER POSITION FIX ===== */
+
+.served-cocktail {
+  width: 125px !important;
+  max-height: 155px !important;
+  bottom: -35px !important;
+  z-index: 4 !important;
+}
+
+@media (max-width: 640px) {
+  .served-cocktail {
+    width: 100px !important;
+    max-height: 130px !important;
+    bottom: -28px !important;
+  }
+}
+
+/* ===== COCKTAIL SERVE FINAL ===== */
+
+.served-cocktail {
+  z-index: 30 !important;
+  width: 125px !important;
+  max-height: 155px !important;
+  bottom: 82px !important;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .served-cocktail {
+    z-index: 30 !important;
+    width: 100px !important;
+    max-height: 130px !important;
+    bottom: 64px !important;
+  }
+}
+
+</style>
+
