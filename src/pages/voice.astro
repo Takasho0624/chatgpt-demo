@@ -2557,6 +2557,27 @@ Web検索がうまくいきませんでした。
                   ) {
 
                     reopenCocktailMenu()
+
+                    /*
+                     * メニュー表示は画面だけ。
+                     * けいには読み上げさせない。
+                     */
+                    try {
+                      if (
+                        dataChannel?.readyState === 'open'
+                      ) {
+                        dataChannel.send(
+                          JSON.stringify({
+                            type: 'response.cancel',
+                          })
+                        )
+                      }
+                    } catch (error) {
+                      console.log(
+                        'MENU RESPONSE CANCEL:',
+                        error
+                      )
+                    }
                   }
                 }
               }
@@ -4490,4 +4511,21 @@ Web検索がうまくいきませんでした。
 }
 
 </style>
+
+<style>
+/* ===== COCKTAIL SIZE FINAL OVERRIDE ===== */
+
+.served-cocktail {
+  width: 155px !important;
+  max-height: 190px !important;
+}
+
+@media (max-width: 640px) {
+  .served-cocktail {
+    width: 125px !important;
+    max-height: 160px !important;
+  }
+}
+</style>
+
 
