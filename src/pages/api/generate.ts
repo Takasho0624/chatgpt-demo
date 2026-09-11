@@ -3,12 +3,8 @@ import { ProxyAgent, fetch } from 'undici'
 // #vercel-end
 import { generatePayload, parseOpenAIStream } from '@/utils/openAI'
 import { verifySignature } from '@/utils/auth'
-import { createClient } from '@supabase/supabase-js'
+import { getUsageSupabase } from '../../utils/usageSupabase'
 import type { APIRoute } from 'astro'
-const supabase = createClient(
-  import.meta.env.PUBLIC_SUPABASE_URL,
-  import.meta.env.SUPABASE_SERVICE_ROLE_KEY,
-)
 
 const apiKey = import.meta.env.OPENAI_API_KEY
 const httpsProxy = import.meta.env.HTTPS_PROXY
@@ -17,6 +13,7 @@ const sitePassword = import.meta.env.SITE_PASSWORD || ''
 const passList = sitePassword.split(',') || []
 
 export const post: APIRoute = async (context) => {
+  const { auth, usage: supabase } = getUsageSupabase()
   let authenticatedUserId: string | null = null
 
   const authorization = context.request.headers.get('authorization')
@@ -25,7 +22,7 @@ export const post: APIRoute = async (context) => {
     const accessToken = authorization.slice(7)
 
     const { data: { user }, error: authError }
-      = await supabase.auth.getUser(accessToken)
+      = await auth.auth.getUser(accessToken)
 
     if (authError) {
       console.error('SUPABASE AUTH ERROR:', authError)
@@ -196,6 +193,7 @@ AIであることを隠す必要はないが、必要もないのにAIである�
   }) as Response
 
   return parseOpenAIStream(response, async (usage) => {
+    if (!supabase) return
     console.log('TOKEN SAVE START', usage)
 
     const { error } = await supabase

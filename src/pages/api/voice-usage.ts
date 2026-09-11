@@ -1,12 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
+import { getUsageSupabase } from '../../utils/usageSupabase'
 import type { APIRoute } from 'astro'
 
-const supabase = createClient(
-  import.meta.env.PUBLIC_SUPABASE_URL,
-  import.meta.env.SUPABASE_SERVICE_ROLE_KEY,
-)
-
 export const post: APIRoute = async (context) => {
+  const { auth, usage: supabase } = getUsageSupabase()
   let authenticatedUserId: string | null = null
 
   const authorization = context.request.headers.get('authorization')
@@ -17,7 +13,7 @@ export const post: APIRoute = async (context) => {
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(accessToken)
+    } = await auth.auth.getUser(accessToken)
 
     if (authError) {
       console.error('VOICE SUPABASE AUTH ERROR:', authError)
@@ -34,6 +30,13 @@ export const post: APIRoute = async (context) => {
 
   if (totalTokens <= 0) {
     return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (!supabase) {
+    return new Response(JSON.stringify({ ok: true, skipped: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
