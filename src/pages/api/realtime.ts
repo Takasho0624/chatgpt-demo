@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro'
+import { cocktailSpeechInstructions } from '../../lib/cocktails.mjs'
 
 export const config = {
   runtime: 'edge',
@@ -437,6 +438,8 @@ AIらしい締め方はしないでください。
 
 
 
+${cocktailSpeechInstructions}
+
 【カクテルメニュー】
 
 けいのBARでは、次の12種類のスタンダードカクテルを提供できます。
@@ -478,7 +481,9 @@ serve_cocktail を呼び出してください。
 「それ」「それにする」などの場合は、直前に話していたカクテルを判断して、
 正しい cocktail_number を指定してください。
 
-serve_cocktail を呼び出した後は、システム側で実際のカクテル画像が表示されます。
+serve_cocktail を呼び出した後は、システム側でカクテルを作成してから画像が表示されます。
+注文が確定したら余計な説明をせず、この関数を呼び出してください。
+作成中は一切話さず、関数の結果と提供完了の指示が届くまで待ってください。
 
 【Web検索】
 
@@ -636,56 +641,8 @@ ${memory || 'まだ特にありません。'}
                      * =========================
                      */
 
-                    turn_detection: {
-
-                      type:
-                        'server_vad',
-
-
-                      /*
-                       * 環境音を
-                       * 発話として拾いにくくする
-                       */
-
-                      threshold:
-                        0.78,
-
-
-                      /*
-                       * 言葉の頭を
-                       * 切りにくくする
-                       */
-
-                      prefix_padding_ms:
-                        300,
-
-
-                      /*
-                       * 短い間で
-                       * 発話終了と判断しない
-                       */
-
-                      silence_duration_ms:
-                        850,
-
-
-                      /*
-                       * 発話終了後に
-                       * 自動応答
-                       */
-
-                      create_response:
-                        true,
-
-
-                      /*
-                       * お客様の割り込みで
-                       * けいの発話を止める
-                       */
-
-                      interrupt_response:
-                        true,
-                    },
+                    // The client enables VAD only after the opening audio drains.
+                    turn_detection: null,
                   },
 
 

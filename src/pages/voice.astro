@@ -195,6 +195,8 @@ import Layout from '../layouts/Layout.astro'
 
 <script>
   import { supabase } from '../utils/supabase'
+  import { cocktails, cocktailSpeechInstructions } from '../lib/cocktails.mjs'
+  import { VoiceConversation, COCKTAIL_TIMING, waitForPreparation } from '../lib/voice-conversation.mjs'
 
 
   /*
@@ -206,6 +208,43 @@ import Layout from '../layouts/Layout.astro'
   let peerConnection = null
   let localStream = null
   let dataChannel = null
+
+  let voiceConversation = null
+  let preparationController = null
+  let iceAudio = null
+  let queuedResponse = null
+
+  function sendRealtime(payload) {
+    if (dataChannel?.readyState !== 'open') return
+    const message = JSON.parse(payload)
+    if (message.type === 'response.create') {
+      if (!voiceConversation?.requestResponse()) return
+      if (voiceConversation.generating.size) {
+        queuedResponse = payload
+        return
+      }
+      message.response = {
+        ...message.response,
+        instructions: [message.response?.instructions, cocktailSpeechInstructions]
+          .filter(Boolean).join('\n'),
+      }
+    }
+    dataChannel.send(JSON.stringify(message))
+  }
+
+  function stopIceSound() {
+    if (iceAudio) {
+      iceAudio.pause()
+      iceAudio.currentTime = 0
+      iceAudio = null
+    }
+  }
+
+  function playIceSound() {
+    if (!COCKTAIL_TIMING.iceSoundSrc) return
+    iceAudio = new Audio(COCKTAIL_TIMING.iceSoundSrc)
+    return iceAudio.play().catch(error => console.error('Ice sound unavailable:', error))
+  }
 
   let displayName = 'お客様'
   let loginDisplayName = ''
@@ -433,67 +472,6 @@ import Layout from '../layouts/Layout.astro'
       'served-cocktail'
     )
 
-  const cocktails = {
-    1: {
-      name: 'マティーニ',
-      src: '/cocktails/1_martini.png',
-    },
-
-    2: {
-      name: 'マンハッタン',
-      src: '/cocktails/2_manhattan.png',
-    },
-
-    3: {
-      name: 'ギムレット',
-      src: '/cocktails/3_gimlet.png',
-    },
-
-    4: {
-      name: 'ダイキリ',
-      src: '/cocktails/4_daiquiri.png',
-    },
-
-    5: {
-      name: 'サイドカー',
-      src: '/cocktails/5_sidecar.png',
-    },
-
-    6: {
-      name: 'ホワイトレディ',
-      src: '/cocktails/6_white-lady.png',
-    },
-
-    7: {
-      name: 'ネグローニ',
-      src: '/cocktails/7_negroni.png',
-    },
-
-    8: {
-      name: 'オールドファッションド',
-      src: '/cocktails/8_old-fashioned.png',
-    },
-
-    9: {
-      name: 'ジントニック',
-      src: '/cocktails/9_gin-tonic.png',
-    },
-
-    10: {
-      name: 'モスコミュール',
-      src: '/cocktails/10_moscow-mule.png',
-    },
-
-    11: {
-      name: 'カシスオレンジ',
-      src: '/cocktails/11_cassis-orange.png',
-    },
-
-    12: {
-      name: 'ファジーネーブル',
-      src: '/cocktails/12_fuzzy-navel.png',
-    },
-  }
 
 
   function showCocktailMenu() {
@@ -589,7 +567,7 @@ import Layout from '../layouts/Layout.astro'
       cocktail.src
 
     servedCocktail.alt =
-      cocktail.name
+      cocktail.displayName
 
     servedCocktail.hidden =
       false
@@ -1332,6 +1310,7 @@ import Layout from '../layouts/Layout.astro'
            */
           if (
             wasSpeaking &&
+            voiceConversation?.canListen &&
             conversationStarted &&
             status
           ) {
@@ -1757,6 +1736,8 @@ import Layout from '../layouts/Layout.astro'
     }
 
 
+    const searchChannel = dataChannel
+    const searchConversation = voiceConversation
     const callId =
       message.call_id
 
@@ -1817,7 +1798,7 @@ import Layout from '../layouts/Layout.astro'
      */
     if (!query) {
 
-      dataChannel.send(
+      sendRealtime(
         JSON.stringify({
           type:
             'conversation.item.create',
@@ -1836,7 +1817,7 @@ import Layout from '../layouts/Layout.astro'
       )
 
 
-      dataChannel.send(
+      sendRealtime(
         JSON.stringify({
           type:
             'response.create',
@@ -1885,6 +1866,7 @@ import Layout from '../layouts/Layout.astro'
       const result =
         await response
           .json()
+      if (dataChannel !== searchChannel || searchConversation.state === 'MAKING_COCKTAIL') return
 
 
       let answer =
@@ -1907,7 +1889,7 @@ import Layout from '../layouts/Layout.astro'
       }
 
 
-      dataChannel.send(
+      sendRealtime(
         JSON.stringify({
           type:
             'conversation.item.create',
@@ -1926,7 +1908,7 @@ import Layout from '../layouts/Layout.astro'
       )
 
 
-      dataChannel.send(
+      sendRealtime(
         JSON.stringify({
           type:
             'response.create',
@@ -1967,13 +1949,15 @@ URLは読み上げないでください。
       error
     ) {
 
+      if (dataChannel !== searchChannel || searchConversation.state === 'MAKING_COCKTAIL') return
+
       console.error(
         'Web search error:',
         error
       )
 
 
-      dataChannel.send(
+      sendRealtime(
         JSON.stringify({
           type:
             'conversation.item.create',
@@ -1992,7 +1976,7 @@ URLは読み上げないでください。
       )
 
 
-      dataChannel.send(
+      sendRealtime(
         JSON.stringify({
           type:
             'response.create',
@@ -2106,6 +2090,16 @@ Web検索がうまくいきませんでした。
        */
       currentVoiceSessionId =
         createVoiceSessionId()
+
+      voiceConversation = new VoiceConversation(
+        message => {
+          if (dataChannel?.readyState === 'open')
+            dataChannel.send(JSON.stringify(message))
+        },
+        enabled => localStream?.getAudioTracks().forEach(track => { track.enabled = enabled })
+      )
+      // Lock before acquiring/attaching the mic, including connection setup.
+      voiceConversation.pending = true
 
 
       /*
@@ -2343,6 +2337,8 @@ Web検索がうまくいきませんでした。
             track
           ) => {
 
+            track.enabled = false
+
             peerConnection
               .addTrack(
                 track,
@@ -2408,8 +2404,7 @@ Web検索がうまくいきませんでした。
               getJapanTimeInfo()
 
 
-            dataChannel
-              .send(
+            sendRealtime(
                 JSON.stringify({
                   type:
                     'response.create',
@@ -2500,6 +2495,15 @@ Web検索がうまくいきませんでした。
        * =========================
        */
 
+      const connectionChannel = dataChannel
+      const connectionConversation = voiceConversation
+      connectionChannel.onclose = () => {
+        if (dataChannel === connectionChannel) stopVoice()
+      }
+      peerConnection.onconnectionstatechange = () => {
+        if (dataChannel === connectionChannel && peerConnection?.connectionState === 'failed') stopVoice()
+      }
+
       dataChannel
         .onmessage =
           async (
@@ -2512,6 +2516,26 @@ Web検索がうまくいきませんでした。
                 JSON.parse(
                   event.data
                 )
+
+              if (dataChannel !== connectionChannel) return
+              connectionConversation.handle(message)
+              if (message.type === 'response.done' && queuedResponse
+                && !connectionConversation.generating.size) {
+                const payload = queuedResponse
+                queuedResponse = null
+                sendRealtime(payload)
+              }
+              if (message.type === 'conversation.item.input_audio_transcription.completed'
+                && connectionConversation.rejectedInput.has(message.item_id)) return
+
+              // Late VAD events must not change UI or trigger menu actions while locked.
+              if (message.type.startsWith('input_audio_buffer.speech_')
+                && !connectionConversation.canListen) return
+              if (message.type === 'output_audio_buffer.stopped'
+                && connectionConversation.canListen && status) {
+                status.textContent = '話しかけてね🎙️'
+              }
+
 
 
               /*
@@ -2551,11 +2575,13 @@ Web検索がうまくいきませんでした。
                    * カクテルを片付けてメニューを再表示
                    */
                   if (
+                    connectionConversation.state !== 'MAKING_COCKTAIL' &&
                     transcript.includes(
                       'メニュー'
                     )
                   ) {
 
+                    if (dataChannel !== connectionChannel) return
                     reopenCocktailMenu()
 
                     /*
@@ -2566,11 +2592,8 @@ Web検索がうまくいきませんでした。
                       if (
                         dataChannel?.readyState === 'open'
                       ) {
-                        dataChannel.send(
-                          JSON.stringify({
-                            type: 'response.cancel',
-                          })
-                        )
+                        if (connectionConversation.canInterrupt)
+                          connectionConversation.stopOutput()
                       }
                     } catch (error) {
                       console.log(
@@ -2746,150 +2769,102 @@ Web検索がうまくいきませんでした。
                   'serve_cocktail'
               ) {
 
+                const callId = message.call_id
+                if (!callId || handledToolCalls.has(callId)) return
+                handledToolCalls.add(callId)
+                const previousState = connectionConversation.state
+                let preparation = null
                 try {
-
-                  const args =
-                    JSON.parse(
-                      message.arguments ||
-                        '{}'
-                    )
-
-
-                  const number =
-                    Number(
-                      args.cocktail_number
-                    )
-
-
-                  /* 注文確定後、メニューを閉じる */
-                  hideCocktailMenu()
-
-                  /* 以前のカクテルを一旦消す */
-                  if (servedCocktail) {
-                    servedCocktail.hidden = true
+                  const args = JSON.parse(message.arguments || '{}')
+                  const number = args.cocktail_number
+                  if (!Number.isInteger(number) || !cocktails[number]) {
+                    sendRealtime(JSON.stringify({
+                      type: 'conversation.item.create',
+                      item: { type: 'function_call_output', call_id: callId,
+                        output: JSON.stringify({ success: false, error: '1〜12の番号を指定してください。' }) },
+                    }))
+                    sendRealtime(JSON.stringify({ type: 'response.create' }))
+                    return
+                  }
+                  if (connectionConversation.state === 'MAKING_COCKTAIL') {
+                    sendRealtime(JSON.stringify({
+                      type: 'conversation.item.create',
+                      item: { type: 'function_call_output', call_id: callId,
+                        output: JSON.stringify({ success: false, error: '先の注文を作成中です。' }) },
+                    }))
+                    return
                   }
 
-                  /* けいも一旦消す */
+                  preparation = new AbortController()
+                  preparationController = preparation
+                  queuedResponse = null
+                  connectionConversation.pending = false
+                  connectionConversation.transition('MAKING_COCKTAIL')
+                  connectionConversation.stopOutput()
+                  // Also silence packets already received by the browser.
+                  if (remoteAudio) remoteAudio.muted = true
+                  if (status) status.textContent = ''
+                  hideCocktailMenu()
+                  if (servedCocktail) servedCocktail.hidden = true
                   if (keiAvatar) {
                     keiAvatar.style.opacity = '0'
                     keiAvatar.style.visibility = 'hidden'
                   }
 
-                  /* カクテルを作っている1秒間 */
-                  await new Promise(
-                    resolve => setTimeout(resolve, 1000)
-                  )
-
-                  /* 注文されたカクテルを表示 */
-                  const cocktail =
-                    serveCocktail(
-                      number
-                    )
-
-                  /*
-                   * けいを中央へ戻して
-                   * カクテルと同時に表示
-                   */
+                  const completed = await waitForPreparation(preparation.signal, playIceSound)
+                  if (!completed || dataChannel !== connectionChannel) return
+                  stopIceSound()
+                  const cocktail = serveCocktail(number)
+                  if (!cocktail) throw new Error('カクテル表示領域がありません')
                   if (keiAvatar) {
-                    keiAvatar.classList.remove(
-                      'kei-avatar--menu-open'
-                    )
-
+                    keiAvatar.classList.remove('kei-avatar--menu-open')
                     keiAvatar.style.left = '50%'
                     keiAvatar.style.maxWidth = '86%'
                     keiAvatar.style.visibility = 'visible'
                     keiAvatar.style.opacity = '1'
                   }
-
-
-                  if (
-                    cocktail &&
-                    dataChannel &&
-                    dataChannel.readyState ===
-                      'open'
-                  ) {
-
-                    /*
-                     * Function実行結果を
-                     * Realtime APIへ返す
-                     */
-
-                    dataChannel.send(
-                      JSON.stringify({
-                        type:
-                          'conversation.item.create',
-
-                        item: {
-                          type:
-                            'function_call_output',
-
-                          call_id:
-                            message.call_id,
-
-                          output:
-                            JSON.stringify({
-                              success:
-                                true,
-
-                              cocktail_number:
-                                number,
-
-                              cocktail_name:
-                                cocktail.name,
-                            }),
-                        },
-                      })
-                    )
-
-
-                    /*
-                     * 提供後に
-                     * けいから一言
-                     */
-
-                    dataChannel.send(
-                      JSON.stringify({
-                        type:
-                          'response.create',
-
-                        response: {
-                          instructions: `
+                  if (remoteAudio) remoteAudio.muted = false
+                  // The cocktail is now visible: barge-in includes the serving line.
+                  connectionConversation.transition('SERVING')
+                  sendRealtime(JSON.stringify({
+                    type: 'conversation.item.create',
+                    item: {
+                      type: 'function_call_output', call_id: callId,
+                      output: JSON.stringify({ success: true, cocktail_number: number,
+                        cocktail_name: cocktail.speechName }),
+                    },
+                  }))
+                  sendRealtime(JSON.stringify({
+                    type: 'response.create',
+                    response: { instructions: `
 カクテルの提供が完了しました。
-
-まず
-「${cocktail.name}です。どうぞ」
-と自然に伝えてください。
-
-続けて、バーでくつろいでもらうような一言を添えて、
-自然に会話へ戻してください。
-
-たとえば
-「ゆっくり飲みながらね。今日は何の話しようか？」
-「ゆっくりしていってね。今日はどんな話する？」
-などです。
-
-ただし毎回同じ例文を使わず、
-それまでの会話やお客様の雰囲気に合わせて、
-けいらしい自然な言葉で短く問いかけてください。
-
-すでに話していた話題がある場合は、
-その話の続きへ自然に戻っても構いません。
-
-カクテルの長い説明は不要です。
-                          `.trim(),
-                        },
-                      })
-                    )
-                  }
-
+「お待たせしました。${cocktail.speechName}です。どうぞ」と自然な日本語で伝えてください。
+カクテルの長い説明は不要です。短い一言を添え、それまでの会話に自然に戻ってください。
+                    `.trim() },
+                  }))
                 } catch (error) {
-
-                  console.error(
-                    'serve_cocktail error:',
-                    error
-                  )
+                  console.error('serve_cocktail error:', error)
+                  if (dataChannel === connectionChannel) {
+                    if (remoteAudio) remoteAudio.muted = false
+                    if (keiAvatar) {
+                      keiAvatar.style.visibility = 'visible'
+                      keiAvatar.style.opacity = '1'
+                    }
+                    connectionConversation.transition(previousState)
+                    if (status) status.textContent = '注文をもう一度伝えてね🍸'
+                    sendRealtime(JSON.stringify({
+                      type: 'conversation.item.create',
+                      item: { type: 'function_call_output', call_id: callId,
+                        output: JSON.stringify({ success: false, error: '注文の処理に失敗しました。もう一度確認してください。' }) },
+                    }))
+                    sendRealtime(JSON.stringify({ type: 'response.create' }))
+                  }
+                } finally {
+                  if (preparation && preparationController === preparation) {
+                    preparationController = null
+                    stopIceSound()
+                  }
                 }
-
 
                 return
               }
@@ -2908,9 +2883,8 @@ Web検索がうまくいきませんでした。
                   'search_web'
               ) {
 
-                await handleWebSearch(
-                  message
-                )
+                if (connectionConversation.state !== 'MAKING_COCKTAIL')
+                  await handleWebSearch(message)
 
                 return
               }
@@ -3155,6 +3129,16 @@ Web検索がうまくいきませんでした。
    */
 
   function stopVoice() {
+    queuedResponse = null
+    preparationController?.abort()
+    preparationController = null
+    stopIceSound()
+    voiceConversation = null
+    if (remoteAudio) remoteAudio.muted = false
+    if (keiAvatar) {
+      keiAvatar.style.visibility = 'visible'
+      keiAvatar.style.opacity = '1'
+    }
 
     stopRealLipSync()
 
@@ -3333,7 +3317,7 @@ Web検索がうまくいきませんでした。
     .addEventListener(
       'beforeunload',
       () => {
-
+        stopVoice()
         stopBlinking()
       }
     )
