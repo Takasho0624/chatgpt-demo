@@ -24,6 +24,7 @@ async function page() {
     },
   }
   const sounds = []
+  const music = { starts: 0, stops: 0 }
   class Sound {
     constructor(src) { this.src = src; this.currentTime = 0; this.paused = false; sounds.push(this) }
     async play() { this.played = true }
@@ -52,6 +53,7 @@ async function page() {
     crypto: globalThis.crypto,
     AbortController,
     Audio: Sound,
+    BarBgm: class { async start() { music.starts++ } stop() { music.stops++ } },
     VoiceConversation,
     cocktails,
     cocktailSpeechInstructions,
@@ -81,6 +83,7 @@ async function page() {
   await vm.runInContext('startVoice()', context)
   return {
     sounds,
+    music,
     context,
     sent,
     track,
@@ -90,7 +93,7 @@ async function page() {
   }
 }
 
-test('page mutes opening, makes one cocktail silently, displays it before Japanese serving request', async() => {
+test('order reply continues across both ice cues and serving waits for audio drain', async() => {
   const p = await page()
   assert.equal(p.track.enabled, false)
   await p.emit({ type: 'response.created', response: { id: 'opening' } })
@@ -100,22 +103,27 @@ test('page mutes opening, makes one cocktail silently, displays it before Japane
   assert.equal(p.track.enabled, true)
   assert.equal(p.state(), 'WAITING_FOR_ORDER')
   await p.emit({ type: 'response.created', response: { id: 'order' } })
+  await p.emit({ type: 'output_audio_buffer.started', response_id: 'order' })
   const order = { type: 'response.function_call_arguments.done', name: 'serve_cocktail', call_id: 'call1', arguments: '{"cocktail_number":10}' }
   const requestsBefore = p.sent.filter(event => event.type === 'response.create').length
   const making = p.emit(order)
   assert.equal(p.state(), 'MAKING_COCKTAIL')
   assert.equal(p.track.enabled, false)
-  assert.equal(p.elements.get('remote-audio').muted, true)
+  assert.notEqual(p.elements.get('remote-audio').muted, true)
   await p.emit(order) // Duplicate must not create another drink.
   assert.equal(p.sent.filter(event => event.type === 'response.create').length, requestsBefore)
-  await p.emit({ type: 'response.done', response: { id: 'order', status: 'cancelled', output: [] } })
+  await p.emit({ type: 'response.done', response: { id: 'order', status: 'completed', output: [{ content: [{ type: 'audio' }] }] } })
   await making
   assert.equal(p.elements.get('served-cocktail').hidden, false)
   assert.equal(p.elements.get('served-cocktail').src, '/cocktails/10_moscow-mule.png')
   assert.equal(p.elements.get('remote-audio').muted, false)
-  assert.equal(p.track.enabled, true)
+  assert.equal(p.track.enabled, false)
   assert.equal(p.state(), 'SERVING')
   assert.equal(p.sounds.length, 2)
+  assert.deepEqual(p.music, { starts: 1, stops: 0 })
+  assert.equal(p.sent.some(event => ['response.cancel', 'output_audio_buffer.clear', 'conversation.item.truncate'].includes(event.type)), false)
+  assert.equal(p.sent.filter(event => event.type === 'response.create').length, requestsBefore)
+  await p.emit({ type: 'output_audio_buffer.stopped', response_id: 'order' })
   for (const sound of p.sounds) {
     assert.equal(sound.src, COCKTAIL_TIMING.iceSoundSrc)
     assert.equal(sound.played, true)
@@ -124,7 +132,14 @@ test('page mutes opening, makes one cocktail silently, displays it before Japane
   const requests = p.sent.filter(event => event.type === 'response.create')
   assert.equal(requests.length, requestsBefore + 1)
   assert.match(requests.at(-1).response.instructions, /お待たせしました。モスコミュールです/)
+  await p.emit({ type: 'response.created', response: { id: 'serving' } })
+  await p.emit({ type: 'response.done', response: { id: 'serving', status: 'completed', output: [{ content: [{ type: 'audio' }] }] } })
+  assert.equal(p.track.enabled, false)
+  await p.emit({ type: 'output_audio_buffer.stopped', response_id: 'serving' })
+  assert.equal(p.state(), 'FREE_TALK')
+  assert.equal(p.track.enabled, true)
   vm.runInContext('stopVoice()', p.context)
+  assert.deepEqual(p.music, { starts: 1, stops: 1 })
 })
 
 test('page stop during preparation prevents late display and response', async() => {

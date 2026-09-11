@@ -63,33 +63,34 @@ test('text-only and failed responses do not permanently lock the opening', () =>
   assert.equal(mic(), true)
 })
 
-test('making suppresses input and requests, and cancels late responses', () => {
+test('making suppresses input and extra requests while preserving response audio', () => {
   const { flow, sent, mic } = setup()
   flow.transition('MAKING_COCKTAIL')
   assert.equal(mic(), false)
   assert.equal(flow.requestResponse(), false)
   created(flow, 'late')
-  assert.ok(sent.some(event => event.type === 'response.cancel' && event.response_id === 'late'))
+  flow.handle({ type: 'output_audio_buffer.started', response_id: 'late' })
+  assert.equal(sent.some(event => ['response.cancel', 'output_audio_buffer.clear', 'conversation.item.truncate'].includes(event.type)), false)
   done(flow, 'late', false, 'cancelled')
   drained(flow, 'late', 'output_audio_buffer.cleared')
   assert.equal(flow.state, 'MAKING_COCKTAIL')
   assert.equal(mic(), false)
 })
 
-test('serving and free talk enable server barge-in throughout playback', () => {
+test('serving stays protected until drained, then free talk enables barge-in', () => {
   const { flow, sent, mic } = setup()
   flow.transition('SERVING')
   flow.requestResponse()
   created(flow, 'serve')
   flow.handle({ type: 'output_audio_buffer.started', response_id: 'serve' })
-  assert.equal(mic(), true)
-  assert.equal(flow.canInterrupt, true)
-  const vad = sent.filter(event => event.type === 'session.update').at(-1).session.audio.input.turn_detection
-  assert.equal(vad.interrupt_response, true)
-  assert.equal(vad.create_response, true)
+  assert.equal(mic(), false)
+  assert.equal(flow.canInterrupt, false)
   done(flow, 'serve', true, 'cancelled')
   drained(flow, 'serve', 'output_audio_buffer.cleared')
   assert.equal(flow.state, 'FREE_TALK')
+  const vad = sent.filter(event => event.type === 'session.update').at(-1).session.audio.input.turn_detection
+  assert.equal(vad.interrupt_response, true)
+  assert.equal(vad.create_response, true)
   created(flow, 'reply')
   done(flow, 'reply')
   assert.equal(mic(), true)

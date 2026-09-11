@@ -3,6 +3,7 @@ export const COCKTAIL_TIMING = Object.freeze({
   preparationSeconds: 7,
   iceSoundAtSeconds: Object.freeze([2, 5]),
   iceSoundSrc: '/sounds/Ice_sound_pixta_44843629.wav',
+  iceSoundVolume: 0.25,
 })
 
 export function waitForPreparation(signal, playIce, timing = COCKTAIL_TIMING) {
@@ -54,11 +55,11 @@ export class VoiceConversation {
   }
 
   get canInterrupt() {
-    return this.state === 'SERVING' || this.state === 'FREE_TALK'
+    return this.state === 'FREE_TALK'
   }
 
   get canListen() {
-    return this.state !== 'MAKING_COCKTAIL'
+    return this.state !== 'MAKING_COCKTAIL' && this.state !== 'SERVING'
       && (this.canInterrupt || (!this.pending && !this.generating.size && !this.playing.size))
   }
 
@@ -121,14 +122,10 @@ export class VoiceConversation {
     if (message.type === 'response.created') {
       this.pending = false
       this.generating.add(id)
-      if (this.state === 'MAKING_COCKTAIL')
-        this.stopOutput()
     }
-    if (message.type === 'output_audio_buffer.started') {
+    if (message.type === 'output_audio_buffer.started')
       this.playing.add(id)
-      if (this.state === 'MAKING_COCKTAIL')
-        this.stopOutput()
-    }
+
     if (message.type === 'response.done') {
       this.generating.delete(id)
       const hasAudio = message.response?.output?.some(item =>

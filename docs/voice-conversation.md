@@ -1,5 +1,17 @@
 # けいのBAR：音声会話と提供演出
 
+## 2026-09-12 更新（以下の旧仕様・検証履歴より優先）
+
+- MAKING_COCKTAILへの移行・氷SEでRealtime音声をcancel/clear/truncate/muteしません。注文への返事をそのまま再生し、追加の会話リクエストは増やしません。
+- 画像は注文から7秒後に表示。提供セリフは直前の生成と音声バッファが終わるまで待ちます。
+- MAKING_COCKTAILとSERVINGはマイク/VAD無効。提供セリフが再生完了するとFREE_TALKになり割り込み可能です。
+- `src/lib/voice-conversation.mjs`：`COCKTAIL_TIMING`で7秒、SE配列`[2, 5]`、氷音量`iceSoundVolume: 0.25`を設定。
+- `src/lib/bar-bgm.mjs`：`BGM_SETTINGS`でBGMパスと音量`0.035`を設定。添付WAV全編をAAC 128kbpsの`public/sounds/JAZZ_pixta_117014742.m4a`（約3.8MB）へ変換。元のWAVと氷WAVは変更しません。
+- BGMは開始操作時に専用AudioContextを起動し、読み込み・デコード後にAudioBufferSourceのloopで末尾から先頭へ連続再生します。Realtimeと氷SEはBGMを停止・再開しません。セッション終了時のみ停止。曲自体の先頭・末尾の静けさは素材どおりです。
+- 自動テスト19件成功。注文音声を7秒以上再生中として氷2回・画像表示を実行し、cancel/clear/truncateがなく、提供セリフが再生完了まで待つことを確認。BGMの重複開始防止・読み込み中の停止・音量・ループも確認。これは模擬WebRTCテストで、実音声試聴の代わりではありません。
+
+以下は初回実装時の記録です（作成中無言・SERVING割り込みの仕様は上記へ変更）。
+
 ## 変更ファイル
 
 - `src/pages/voice.astro`：既存のWebRTC、マイク、注文ツール、画像表示に状態管理を接続。停止・接続終了時の作成タイマーとSEを破棄。
