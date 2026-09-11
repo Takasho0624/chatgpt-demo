@@ -20,9 +20,9 @@ export class BarBgm {
     this.context = context
     // Preview diagnosis: no credentials or conversation content are logged.
     // eslint-disable-next-line no-console
-    context.onstatechange = () => console.info('BGM context:', {
+    context.onstatechange = () => console.info('BGM context:', JSON.stringify({
       state: context.state, currentTime: context.currentTime,
-    })
+    }))
     try {
       await context.resume()
       const response = await this.fetchAudio(BGM_SETTINGS.src)
@@ -41,13 +41,13 @@ export class BarBgm {
       this.source = source
       source.start()
       // eslint-disable-next-line no-console
-      console.info('BGM playback started:', {
+      console.info('BGM playback started:', JSON.stringify({
         state: context.state,
         currentTime: context.currentTime,
         duration: buffer.duration,
         volume: gain.gain.value,
         loop: source.loop,
-      })
+      }))
     } catch (error) {
       if (generation === this.generation)
         this.stop()
