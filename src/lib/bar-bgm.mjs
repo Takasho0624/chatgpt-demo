@@ -1,12 +1,12 @@
 export const BGM_SETTINGS = Object.freeze({
   src: '/sounds/JAZZ_pixta_117014742.m4a',
-  volume: 0.035,
+  volume: 0.18,
 })
 
 // A decoded buffer loops without HTMLAudio ended/restart gaps. Voice and ice
 // never touch this context. Only ending the voice session stops the music.
 export class BarBgm {
-  constructor(createContext = () => new window.AudioContext(), fetchAudio = fetch) {
+  constructor(createContext = () => new window.AudioContext(), fetchAudio = (...args) => fetch(...args)) {
     this.createContext = createContext
     this.fetchAudio = fetchAudio
     this.generation = 0
@@ -18,6 +18,11 @@ export class BarBgm {
     const generation = ++this.generation
     const context = this.createContext()
     this.context = context
+    // Preview diagnosis: no credentials or conversation content are logged.
+    // eslint-disable-next-line no-console
+    context.onstatechange = () => console.info('BGM context:', {
+      state: context.state, currentTime: context.currentTime,
+    })
     try {
       await context.resume()
       const response = await this.fetchAudio(BGM_SETTINGS.src)
@@ -35,6 +40,14 @@ export class BarBgm {
       source.connect(gain)
       this.source = source
       source.start()
+      // eslint-disable-next-line no-console
+      console.info('BGM playback started:', {
+        state: context.state,
+        currentTime: context.currentTime,
+        duration: buffer.duration,
+        volume: gain.gain.value,
+        loop: source.loop,
+      })
     } catch (error) {
       if (generation === this.generation)
         this.stop()

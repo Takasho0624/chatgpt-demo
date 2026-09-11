@@ -2,6 +2,26 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { BGM_SETTINGS, BarBgm } from '../src/lib/bar-bgm.mjs'
 
+test('default fetch keeps the browser receiver instead of binding it to BarBgm', async(t) => {
+  let bgm
+  let starts = 0
+  t.mock.method(globalThis, 'fetch', async function(url) {
+    assert.notEqual(this, bgm, 'Window.fetch cannot be called with a BarBgm receiver')
+    assert.equal(url, BGM_SETTINGS.src)
+    return { ok: true, arrayBuffer: async() => new ArrayBuffer(0) }
+  })
+  bgm = new BarBgm(() => ({
+    resume: async() => {},
+    close: async() => {},
+    decodeAudioData: async() => ({ duration: 249.605 }),
+    createGain: () => ({ gain: {}, connect() {} }),
+    createBufferSource: () => ({ connect() {}, start() { starts++ }, stop() {} }),
+  }))
+  await bgm.start()
+  assert.equal(starts, 1)
+  bgm.stop()
+})
+
 test('BGM loops in its own context and repeated start cannot restart playback', async() => {
   let starts = 0
   let stops = 0

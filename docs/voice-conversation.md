@@ -1,5 +1,9 @@
 # けいのBAR：音声会話と提供演出
 
+## BGM読み込み修正
+
+実PreviewのConsoleで `Failed to execute 'fetch' on 'Window': Illegal invocation` を確認。ネイティブfetchをインスタンスのメソッドとして保存・呼び出すことでthisがBarBgmになっていたのが原因です。デフォルトの読み込み関数をラッパーに変更し、ブラウザのfetchを正しい呼び出し元で実行します。回帰テストを追加し、20件成功。BGM音量は0.035から0.18へ変更（体感比率は音源・出力機器によります）。Consoleに開始時のAudioContext状態、時刻、曲の長さ、音量、loop、およびcontextの状態変化を記録します。音声やSEからBGMを操作する処理は追加していません。
+
 ## 2026-09-12 更新（以下の旧仕様・検証履歴より優先）
 
 - MAKING_COCKTAILへの移行・氷SEでRealtime音声をcancel/clear/truncate/muteしません。注文への返事をそのまま再生し、追加の会話リクエストは増やしません。
