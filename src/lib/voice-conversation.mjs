@@ -1,8 +1,8 @@
-// Seconds from order confirmation. Add the optional local asset before enabling SE.
+// Seconds from order confirmation. One playback per entry in iceSoundAtSeconds.
 export const COCKTAIL_TIMING = Object.freeze({
   preparationSeconds: 7,
-  iceSoundAtSeconds: 3,
-  iceSoundSrc: null, // '/sounds/ice-clink.mp3' → public/sounds/ice-clink.mp3
+  iceSoundAtSeconds: Object.freeze([2, 5]),
+  iceSoundSrc: '/sounds/Ice_sound_pixta_44843629.wav',
 })
 
 export function waitForPreparation(signal, playIce, timing = COCKTAIL_TIMING) {
@@ -11,23 +11,28 @@ export function waitForPreparation(signal, playIce, timing = COCKTAIL_TIMING) {
       resolve(false)
       return
     }
-    let iceTimer
+    const iceTimers = []
     let endTimer
     let abort
     const finish = (completed) => {
-      clearTimeout(iceTimer)
+      iceTimers.forEach(clearTimeout)
       clearTimeout(endTimer)
       signal.removeEventListener('abort', abort)
       resolve(completed)
     }
     abort = () => finish(false)
-    iceTimer = setTimeout(() => {
-      // A missing/unplayable optional sound must never block serving.
-      Promise.resolve().then(() => {
-        if (!signal.aborted)
-          return playIce()
-      }).catch(() => {})
-    }, Math.min(timing.iceSoundAtSeconds, timing.preparationSeconds) * 1000)
+    for (const seconds of timing.iceSoundAtSeconds) {
+      // Ignore out-of-range cues; never start SE at/after serving.
+      if (!Number.isFinite(seconds) || seconds < 0 || seconds >= timing.preparationSeconds)
+        continue
+      iceTimers.push(setTimeout(() => {
+        // A missing/unplayable sound must never block the next cue or serving.
+        Promise.resolve().then(() => {
+          if (!signal.aborted)
+            return playIce()
+        }).catch(() => {})
+      }, seconds * 1000))
+    }
     endTimer = setTimeout(() => finish(true), timing.preparationSeconds * 1000)
     signal.addEventListener('abort', abort, { once: true })
   })

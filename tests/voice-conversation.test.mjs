@@ -110,12 +110,12 @@ test('late output completion cannot unlock another response', () => {
   assert.equal(mic(), true)
 })
 
-test('preparation plays SE before serving and still completes after SE failure', async(t) => {
+test('preparation plays at 2s and 5s, then serves at 7s even after SE failure', async(t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const controller = new AbortController()
   const events = []
   const waiting = waitForPreparation(controller.signal, () => { events.push('ice'); throw new Error('missing') })
-  t.mock.timers.tick(2999)
+  t.mock.timers.tick(1999)
   await Promise.resolve()
   assert.deepEqual(events, [])
   t.mock.timers.tick(1)
@@ -123,7 +123,13 @@ test('preparation plays SE before serving and still completes after SE failure',
   assert.deepEqual(events, ['ice'])
   let completed = false
   waiting.then(() => { completed = true })
-  t.mock.timers.tick(3999)
+  t.mock.timers.tick(2999)
+  await Promise.resolve()
+  assert.deepEqual(events, ['ice'])
+  t.mock.timers.tick(1)
+  await Promise.resolve()
+  assert.deepEqual(events, ['ice', 'ice'])
+  t.mock.timers.tick(1999)
   await Promise.resolve()
   assert.equal(completed, false)
   t.mock.timers.tick(1)
@@ -151,4 +157,32 @@ test('all 12 cocktails have separate display and Japanese speech names', () => {
   }
   assert.equal(cocktails[1].speechName, 'マティーニ')
   assert.equal(cocktails[10].speechName, 'モスコミュール')
+})
+
+test('stopping after first cue cancels the second cue', async(t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const controller = new AbortController()
+  let sounds = 0
+  const waiting = waitForPreparation(controller.signal, () => { sounds++ })
+  t.mock.timers.tick(2000)
+  await Promise.resolve()
+  assert.equal(sounds, 1)
+  controller.abort()
+  t.mock.timers.tick(5000)
+  assert.equal(await waiting, false)
+  assert.equal(sounds, 1)
+})
+
+test('cue array controls count and ignores cues outside preparation', async(t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let sounds = 0
+  const waiting = waitForPreparation(new AbortController().signal, () => { sounds++ }, {
+    preparationSeconds: 7, iceSoundAtSeconds: [-1, 1, 3, 6, 7, 8, NaN],
+  })
+  for (let second = 0; second < 7; second++) {
+    t.mock.timers.tick(1000)
+    await Promise.resolve()
+  }
+  assert.equal(await waiting, true)
+  assert.equal(sounds, 3)
 })

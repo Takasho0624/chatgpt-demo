@@ -23,6 +23,12 @@ async function page() {
       return elements.get(id)
     },
   }
+  const sounds = []
+  class Sound {
+    constructor(src) { this.src = src; this.currentTime = 0; this.paused = false; sounds.push(this) }
+    async play() { this.played = true }
+    pause() { this.paused = true }
+  }
   const sent = []
   let channel
   const track = { enabled: true, stop() {} }
@@ -45,13 +51,14 @@ async function page() {
     console,
     crypto: globalThis.crypto,
     AbortController,
+    Audio: Sound,
     VoiceConversation,
     cocktails,
     cocktailSpeechInstructions,
     COCKTAIL_TIMING,
-    // Shorten only the test clock; production uses 7 seconds / 3 seconds.
+    // Shorten only the test clock; production uses 7 seconds / cues at 2 and 5 seconds.
     waitForPreparation: (signal, playIce) => waitForPreparation(signal, playIce, {
-      preparationSeconds: 0.02, iceSoundAtSeconds: 0.01,
+      preparationSeconds: 0.07, iceSoundAtSeconds: [0.02, 0.05],
     }),
     navigator: {
       mediaDevices: {
@@ -73,6 +80,7 @@ async function page() {
   vm.runInContext(source, context)
   await vm.runInContext('startVoice()', context)
   return {
+    sounds,
     context,
     sent,
     track,
@@ -107,6 +115,12 @@ test('page mutes opening, makes one cocktail silently, displays it before Japane
   assert.equal(p.elements.get('remote-audio').muted, false)
   assert.equal(p.track.enabled, true)
   assert.equal(p.state(), 'SERVING')
+  assert.equal(p.sounds.length, 2)
+  for (const sound of p.sounds) {
+    assert.equal(sound.src, COCKTAIL_TIMING.iceSoundSrc)
+    assert.equal(sound.played, true)
+    assert.equal(sound.paused, true)
+  }
   const requests = p.sent.filter(event => event.type === 'response.create')
   assert.equal(requests.length, requestsBefore + 1)
   assert.match(requests.at(-1).response.instructions, /お待たせしました。モスコミュールです/)

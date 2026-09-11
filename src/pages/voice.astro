@@ -242,6 +242,7 @@ import Layout from '../layouts/Layout.astro'
 
   function playIceSound() {
     if (!COCKTAIL_TIMING.iceSoundSrc) return
+    stopIceSound()
     iceAudio = new Audio(COCKTAIL_TIMING.iceSoundSrc)
     return iceAudio.play().catch(error => console.error('Ice sound unavailable:', error))
   }

@@ -39,10 +39,12 @@ SERVING/FREE_TALKではinterrupt_responseとcreate_responseをtrueにし、ユ�
 `src/lib/voice-conversation.mjs` の `COCKTAIL_TIMING`：
 
 - `preparationSeconds: 7`：注文確定から提供まで7秒。
-- `iceSoundAtSeconds: 3`：作成開始から3秒目にSE。さらに4秒待って提供。
-- `iceSoundSrc: null`：素材未配置のため無効。
+- `iceSoundAtSeconds: [2, 5]`：作成開始から2秒目と5秒目に同じSEを再生。配列の要素数が再生回数になります。
+- `iceSoundSrc: '/sounds/Ice_sound_pixta_44843629.wav'`：提供されたWAVを使用。
 
-既存の音声素材は見つからなかったため、外部素材は追加していません。氷の音を `public/sounds/ice-clink.mp3` に置き、`iceSoundSrc` を `'/sounds/ice-clink.mp3'` に変更してください。3秒目から提供までの4秒より短い素材を想定しています。提供・停止時にSEを停止します。素材の読み込み・再生に失敗しても提供は継続します。
+提供された `Ice_sound_pixta_44843629.wav` を `public/sounds/Ice_sound_pixta_44843629.wav` にそのまま配置しました。PCM WAV、44.1kHz、24bit、ステレオ、約1.375秒です。2秒目の音は約3.375秒で終了し、5秒目まで約1.625秒の無音を挟みます。2回目は約6.375秒で終了し、7秒目に提供します（読み込み・再生の遅延がない場合）。
+
+再生前に前回のSEを停止するため、後から設定を変えても音が重複しません。提供・停止時はSEとすべての予約タイマーを止めます。作成時間外のタイミングは無視します。素材の読み込み・再生に失敗しても次のSEと提供は継続します。作成中のけいの発話停止は維持しています。
 
 ## 日本語読み上げ
 
@@ -54,7 +56,7 @@ SERVING/FREE_TALKではinterrupt_responseとcreate_responseをtrueにし、ユ�
 
 ## 検証
 
-- `node --test tests/*.test.mjs`：10件成功。
+- `node --test tests/*.test.mjs`：12件成功。
 - 追加したMJSモジュール・テストのESLint：成功。
 - Astroコンパイラでvoice.astroを変換し、ブラウザスクリプトとAPI TypeScriptをesbuildで変換：成功。
 - `git diff --check`：成功。
@@ -64,6 +66,8 @@ SERVING/FREE_TALKではinterrupt_responseとcreate_responseをtrueにし、ユ�
 
 ## 残る確認
 
-実サービスへの認証・有料Realtime接続・実マイクを使った試聴は未実施です。氷SE素材が必要です。全体ビルド停止・既存lint指摘は別途調査が必要です。
+実サービスへの認証・有料Realtime接続・実マイクを使った試聴は未実施です。全体ビルド停止・既存lint指摘は別途調査が必要です。
 
 実機では、挨拶中の周囲音、注文前の説明中の声、7秒の無言の作成、提供セリフ中と雑談中の割り込み、作成中の停止と再接続、全12種の発音を確認してください。
+
+氷SE追加時：12件の自動テスト（2秒・5秒・7秒の順序、1回目の後に停止、任意回数設定、実ページの2回再生を含む）、変更モジュール・テストのESLint、Astro/esbuildコンパイル、WAVの配置前後のSHA-256一致を確認。実ブラウザでの試聴は未実施です。
