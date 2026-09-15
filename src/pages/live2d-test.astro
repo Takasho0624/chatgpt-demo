@@ -1,0 +1,50 @@
+---
+---
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>けい Live2D 読み込みテスト</title>
+  </head>
+  <body>
+    <main>
+      <div class="bar-background" aria-hidden="true"></div>
+      <canvas id="live2d" aria-label="Live2D モデル けい"></canvas>
+      <img class="bar-counter" src="/kei-counter-front.png" alt="" aria-hidden="true" />
+      <output id="metrics" aria-label="Live2D パラメータの実行時値" hidden></output>
+      <div class="conversation">
+        <span id="connection" role="status">会話を準備しています…</span>
+        <span id="demo-time" role="status"></span>
+        <button id="start-voice" type="button" disabled>けいと話す</button>
+        <button id="stop-voice" type="button" disabled>会話終了</button>
+        <audio id="remote-audio" autoplay playsinline></audio>
+      </div>
+      <p id="status" role="status">モデルを読み込んでいます…</p>
+    </main>
+    <script is:inline src="/live2d-sdk/live2dcubismcore.min.js"></script>
+    <script>
+      import { startLive2DTest } from '../live2d-test';
+      import { initializeRealtimeTest } from '../live2d-realtime';
+      startLive2DTest();
+      initializeRealtimeTest();
+    </script>
+  </body>
+</html>
+
+<style>
+  :global(html), :global(body) { margin: 0; min-height: 100%; background: #151820; }
+  main { position: relative; width: 100vw; height: 100dvh; overflow: hidden; }
+  .bar-background { position: absolute; inset: 0; background: url('/backbar.jpg') center 40% / cover no-repeat; filter: saturate(.92) brightness(.88); }
+  .bar-background::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #07080a55, transparent 35%, transparent 65%, #07080a55); }
+  canvas { position: relative; z-index: 1; display: block; width: 100%; height: 100%; transform: translateY(85px); }
+  .bar-counter { position: absolute; z-index: 2; bottom: 0; left: 0; width: 100%; height: 92px; object-fit: cover; object-position: center 66%; pointer-events: none; }
+  output { position: absolute; z-index: 3; top: 1rem; left: 1rem; padding: .7rem .9rem; color: #d7dce5; background: #202530dd; border-radius: .5rem; white-space: pre; font: 12px/1.5 ui-monospace, monospace; }
+  output[hidden], p:empty { display: none; }
+  .conversation { position: absolute; z-index: 3; top: 1rem; right: 1rem; display: grid; gap: .5rem; padding: .8rem; color: #e8ebf1; background: #202530dd; border-radius: .5rem; font: 14px system-ui, sans-serif; }
+  #demo-time:empty { display: none; }
+  button { padding: .6rem .9rem; color: #fff; background: #485f83; border: 0; border-radius: .4rem; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  @media (max-width: 650px) { canvas { transform: translateY(49px); } .bar-counter { height: 72px; } output { top: auto; bottom: calc(72px + 9rem); left: .5rem; font-size: 10px; } .conversation { top: auto; bottom: calc(72px + .5rem); left: .5rem; right: .5rem; grid-template-columns: 1fr 1fr; font-size: 12px; } #connection, #demo-time { grid-column: 1 / -1; } }
+  p { position: absolute; z-index: 3; left: 1rem; bottom: 0; color: #d7dce5; font: 14px system-ui, sans-serif; }
+</style>

@@ -1,0 +1,28 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "ワーク_kei_live2d.moc3",
+		"Textures": [
+			"ワーク_kei_live2d.2048/texture_00.png"
+		],
+		"Physics": "ワーク_kei_live2d.physics3.json",
+		"DisplayInfo": "ワーク_kei_live2d.cdi3.json"
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": [
+				"ParamMouthOpenY"
+			]
+		}
+	]
+}
